@@ -76,7 +76,7 @@ const EN = {
   '這週內': 'This week', '選日期': 'Pick a date', '截止時間': 'Deadline', '請至少選一天': 'Pick at least one day',
   '可以一次選好幾天，例如每週二、四的課。': 'Pick several days at once, e.g. a class on Tuesdays and Thursdays.',
   '還沒有固定行程': 'No weekly events yet', '連線資訊（手機 App、手機瀏覽器）': 'Connection (phone app, phone browser)',
-  '進階': 'Advanced', '關閉': 'Close', '留言…': 'Comment…', '送出': 'Send', '刪除這則留言？': 'Delete this comment?',
+  '進階': 'Advanced', '開始': 'Start', '結束': 'End', '關閉': 'Close', '留言…': 'Comment…', '送出': 'Send', '刪除這則留言？': 'Delete this comment?',
   '還沒有留言，問問「幾點？」「在哪？」': 'No comments yet. Ask \u201cWhat time?\u201d or \u201cWhere?\u201d', '可以在這裡記一點備註': 'You can jot down notes here',
   '動態': 'Activity', '新增了一起的行程': 'added a shared event', '刪除了一起的行程': 'deleted a shared event', '新增了共用待辦': 'added a shared to-do',
   '完成了共用待辦': 'completed a shared to-do', '留言': 'commented on',

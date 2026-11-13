@@ -154,6 +154,8 @@ async function render() {
   const ab = $('#actbtn'); ab.hidden = !P.multi;
   if (P.multi) { const u = S.view === 'activity' ? 0 : (await api('/activity/unread')).n; ab.querySelector('.dot').hidden = !u; ab.querySelector('.dot').textContent = u; ab.classList.toggle('on', S.view === 'activity'); }
   drawRail();
+  document.body.classList.toggle('bare', bare());
+  if (!bare()) $('#mtitle').innerHTML = '';
   $('#view').innerHTML = html;
   decorate();
   window.scrollTo(0, y);
@@ -395,32 +397,74 @@ VIEW.week = async () => {
 
 /* ---------- 月 ---------- */
 /* 月曆（首頁）：格子裡直接寫行程名稱、依種類上色；點一天，下面列出那天的行程 */
+/* 月曆（首頁），參考 TimeTree：格子撐滿整個畫面、行程名稱直接寫在格子裡；
+   手機上點一天，從底部拉出那天的面板；右下角「＋」新增 */
+const bare = () => S.view === 'month' && MOB();
 async function pickDay(d) {
   if (d.slice(0, 7) !== S.date.slice(0, 7)) return go('month', d);
-  S.date = d; await render();
+  S.date = d;
+  if (MOB()) { document.querySelectorAll('.cal .mc.sel').forEach(x => x.classList.remove('sel')); document.querySelector(`.cal .mc[data-d="${d}"]`)?.classList.add('sel'); return openDaySheet(d); }
+  await render();
 }
 const label = e => `<div class="lb ${e.kind}" ${e.color ? `style="--c:${esc(e.color)}"` : ''}>${esc(e.title)}</div>`;
-VIEW.month = async () => {
-  const [m, s] = await Promise.all([api('/month?d=' + S.date), api('/day?d=' + S.date)]), first = new Date(m.month + '-01T12:00');
-  const title = LANG === 'en' ? `${first.toLocaleDateString(LOCALE, {month: 'long'})} <small>${first.getFullYear()}</small>` : `${first.getMonth() + 1} 月 <small>${first.getFullYear()}</small>`;
-  const n = MOB() ? 3 : 4, on = s.alarms.filter(a => a.enabled), evs = s.events.filter(e => !isDeadline(e));
-  const due = [...s.tasks.upcoming_due.filter(k => k.due.slice(0, 10) === S.date)];
-  const grid = `<div class="cal"><div class="mh">${WD1.map((c, i) => `<span class="${i > 4 ? 'we' : ''}">${c}</span>`).join('')}</div>
-    <div class="mg">${m.days.map(d => { const items = [...d.events.map(label), ...d.due.map(k => `<div class="lb d">${esc(k)}</div>`)];
-      return `<button class="mc ${d.in_month ? '' : 'out'} ${d.date === TODAY() ? 'today' : ''} ${d.date === S.date ? 'sel' : ''} ${d.skip ? 'skip' : ''} ${wdOf(d.date) > 4 ? 'we' : ''}" onclick="pickDay('${d.date}')">
-        <span class="dn num">${+d.date.slice(8)}</span>${items.slice(0, n).join('')}${items.length > n ? `<div class="lb more">+${items.length - n}</div>` : ''}</button>`; }).join('')}</div></div>`;
-  const evForm = `<details class="adder"><summary>＋ ${t('新增行程')}</summary><form class="addrow" onsubmit="event.preventDefault();const f=formData(this);act('/events','POST',{title:f.title,start:S.date+'T'+f.time,end:f.end?S.date+'T'+f.end:null,location:f.location||'',shared:f.shared?1:0})">
-      <input class="field" type="time" name="time" required><input class="field" type="time" name="end" title="${t('結束（可不填）')}">
-      <input class="field" type="text" name="title" placeholder="${t('新增行程')}" required><input class="field" type="text" name="location" placeholder="${t('地點')}" style="max-width:110px">${shareBox()}<button class="btn pri">${t('加入')}</button></form></details>`;
-  const panel = `<div class="card daypanel"><div class="dph"><div><b>${md(S.date)}</b> <span class="muted">${WDN[wdOf(S.date)]}${S.date === TODAY() ? ' · ' + t('今天') : ''}</span></div>
-      <button class="hb" onclick="go('day','${S.date}')">${t('看這天')} ›</button></div>
+function dayPanel(s, inSheet) {
+  const on = s.alarms.filter(a => a.enabled), evs = s.events.filter(e => !isDeadline(e)), d = s.date;
+  const due = s.tasks.upcoming_due.filter(k => k.due.slice(0, 10) === d);
+  return `<div class="dph"><div><b>${md(d)}</b> <span class="muted">${WDN[wdOf(d)]}${d === TODAY() ? ' · ' + t('今天') : ''}</span></div>
+      <button class="hb" onclick="${inSheet ? 'closeSheet(true);' : ''}go('day','${d}')">${t('看這天')} ›</button></div>
     ${s.skip ? `<div class="dpnote">🚫 ${esc(s.skip.reason || t('放假'))}</div>` : ''}
     ${P.me.alarm_mode !== 'off' ? `<div class="dpnote">⏰ ${on.length ? t('{0} 起，共 {1} 個鬧鐘', on[0].time, on.length) : t('這天沒有排鬧鐘')}</div>` : ''}
-    ${evs.length ? agenda(evs, {del: true, now: S.date === TODAY() ? nowMin() : null}) : `<div class="empty">${t('這天沒有行程')}</div>`}
+    ${evs.length ? agenda(evs, {del: true, now: d === TODAY() ? nowMin() : null}) : `<div class="empty">${t('這天沒有行程')}</div>`}
     ${due.length ? `<div class="sec">${t('截止')}</div>` + due.map(k => taskRow(k)).join('') : ''}
-    ${evForm}${othersCard(s).replace(/class="card other"/g, 'class="other in"')}</div>`;
-  return calbar(title) + `<div class="mwrap">${grid}${panel}</div>`;
+    <details class="adder" ${inSheet === 'add' ? 'open' : ''}><summary>＋ ${t('新增行程')}</summary><form class="evadd" onsubmit="event.preventDefault();addEventOn(this,'${d}',${inSheet ? 'true' : 'false'})">
+      <input class="field big" type="text" name="title" placeholder="${t('新增行程')}" required autocomplete="off">
+      <div class="evrow"><label class="lf"><span>${t('開始')}</span><input class="field" type="time" name="time" required></label><label class="lf"><span>${t('結束')}</span><input class="field" type="time" name="end"></label></div>
+      <div class="evrow"><input class="field" type="text" name="location" placeholder="${t('地點')}">${shareBox()}<button class="btn pri">${t('加入')}</button></div></form></details>
+    ${othersCard(s).replace(/class="card other"/g, 'class="other in"')}`;
+}
+async function addEventOn(f, d, inSheet) {
+  const v = formData(f);
+  await api('/events', 'POST', {title: v.title, start: d + 'T' + v.time, end: v.end ? d + 'T' + v.end : null, location: v.location || '', shared: v.shared ? 1 : 0});
+  toast(t('已加入')); if (inSheet) await openDaySheet(d); render();
+}
+async function openDaySheet(d, add) {
+  const s = await api('/day?d=' + d);
+  let box = document.querySelector('.sheetwrap');
+  if (!box) {
+    box = document.createElement('div'); box.className = 'ask sheetwrap';
+    box.onclick = ev => { if (ev.target === box) closeSheet(); };
+    document.body.append(box); document.addEventListener('keydown', sheetKey);
+  }
+  box.innerHTML = `<div class="askbox sheet daysheet" role="dialog" aria-modal="true"><div class="grab"></div>${dayPanel(s, add ? 'add' : true)}</div>`;
+  box.querySelectorAll('.seg').forEach(segSync);
+  if (add) setTimeout(() => box.querySelector('.evadd [name=title]')?.focus(), 250);
+}
+VIEW.month = async () => {
+  const mob = MOB();
+  const [m, s] = await Promise.all([api('/month?d=' + S.date), mob ? null : api('/day?d=' + S.date)]), first = new Date(m.month + '-01T12:00');
+  const title = LANG === 'en' ? `${first.toLocaleDateString(LOCALE, {month: 'long'})} <small>${first.getFullYear()}</small>` : `${first.getMonth() + 1} 月 <small>${first.getFullYear()}</small>`;
+  // 一格放得下幾條：依畫面高度算（手機約 5 條，桌機 5～6 條）
+  const avail = mob ? innerHeight - 64 - 26 - 78 : Math.max(560, innerHeight - 260);
+  const n = Math.max(2, Math.floor((avail / 6 - 26) / (mob ? 16 : 19)));
+  const grid = `<div class="cal" style="--rows:6"><div class="mh">${WD1.map((c, i) => `<span class="${i > 4 ? 'we' : ''}">${c}</span>`).join('')}</div>
+    <div class="mg" id="mgrid">${m.days.map(d => { const items = [...d.events.map(label), ...d.due.map(k => `<div class="lb d">${esc(k)}</div>`)];
+      const more = items.length > n ? items.length - (n - 1) : 0;
+      return `<button class="mc ${d.in_month ? '' : 'out'} ${d.date === TODAY() ? 'today' : ''} ${d.date === S.date && !mob ? 'sel' : ''} ${d.skip ? 'skip' : ''} ${wdOf(d.date) > 4 ? 'we' : ''}" data-d="${d.date}" onclick="pickDay('${d.date}')">
+        <span class="dn num">${+d.date.slice(8)}</span>${(more ? items.slice(0, n - 1) : items).join('')}${more ? `<div class="lb more">+${more}</div>` : ''}</button>`; }).join('')}</div></div>`;
+  if (mob) {
+    $('#mtitle').innerHTML = `<button class="mt-b" onclick="step(-1)" aria-label="${t('往前')}">‹</button><b onclick="go('month',TODAY())">${title}</b><button class="mt-b" onclick="step(1)" aria-label="${t('往後')}">›</button>`;
+    return grid + `<button class="fab" onclick="openDaySheet(S.date,true)" aria-label="${t('新增行程')}"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>`;
+  }
+  return calbar(title) + `<div class="mwrap">${grid}<div class="card daypanel">${dayPanel(s, false)}</div></div>`;
 };
+/* 手機月曆：左右滑換月 */
+let swX = null, swY = 0;
+document.addEventListener('touchstart', e => { if (bare() && e.target.closest('#mgrid')) { swX = e.touches[0].clientX; swY = e.touches[0].clientY; } }, {passive: true});
+document.addEventListener('touchend', e => {
+  if (swX === null) return;
+  const dx = e.changedTouches[0].clientX - swX, dy = e.changedTouches[0].clientY - swY; swX = null;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
+}, {passive: true});
 VIEW.month_old = async () => {
   const m = await api('/month?d=' + S.date), first = new Date(m.month + '-01T12:00');
   const title = LANG === 'en' ? first.toLocaleDateString(LOCALE, {month: 'long', year: 'numeric'}) : `${first.getFullYear()} 年 ${first.getMonth() + 1} 月`;
@@ -483,10 +527,11 @@ async function openEvent(id, owner) {
   const list = box.querySelector('.cmts'); list.scrollTop = list.scrollHeight;
 }
 const sheetKey = e => { if (e.key === 'Escape') closeSheet(); };
-function closeSheet() {
+function closeSheet(skipRender) {
   const box = document.querySelector('.sheetwrap'); if (!box) return;
   document.removeEventListener('keydown', sheetKey);
-  box.classList.add('out'); setTimeout(() => box.remove(), 180); render();
+  box.classList.add('out'); setTimeout(() => box.remove(), 180);
+  if (!skipRender) render();
 }
 async function sendComment(f, id, owner) {
   const body = f.body.value.trim(); if (!body) return;
@@ -690,6 +735,7 @@ setPlaceholder();
 $('#theme').title = t('切換亮色／暗色');
 $('#theme').onclick = () => toggleTheme().then(() => { if (S.view === 'link') render(); });
 mqMobile.addEventListener('change', () => { setPlaceholder(); render(); });
+addEventListener('resize', () => { if (S.view === 'month') { clearTimeout(S.rz); S.rz = setTimeout(render, 250); } });
 
 let pvTimer;
 $('#cmd').addEventListener('input', e => {
