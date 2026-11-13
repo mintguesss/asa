@@ -26,6 +26,16 @@
 
 **Docker**：`cp .env.example .env` 之後 `docker compose up -d`，時區在 `docker-compose.yml` 裡改；開 `http://localhost:8787/?token=<.env 裡的 PHONE_TOKEN>`。
 
+## 裝成手機 App（PWA）
+
+瀏覽器只讓 HTTPS 網站安裝成 App。有 Tailscale 的話，一行指令就能拿到一個只有你自己裝置連得到的 HTTPS 網址：
+
+```bash
+tailscale serve --bg --https=8443 http://localhost:8787
+```
+
+手機開 `https://你的電腦名稱.你的tailnet.ts.net:8443`，輸入一次存取碼，然後：Android Chrome 選「安裝應用程式」；iPhone Safari 按「分享 → 加入主畫面」。建議把這個網址填進 `.env` 的 `PUBLIC_URL`，推播裡的連結才會用它。要關掉就跑 `tailscale serve --https=8443 off`。
+
 ## 網頁版
 
 | 頁面 | 用途 |

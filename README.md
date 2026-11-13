@@ -56,6 +56,16 @@ docker compose up -d
 
 Set your time zone in `docker-compose.yml` (alarm times are local times), then open `http://localhost:8787/?token=<PHONE_TOKEN from .env>`. Set `PUBLIC_URL` in `.env` so links in notifications and the phone setup page point at the host, not the container.
 
+### Install as an app (PWA)
+
+Browsers only install web apps served over HTTPS. With Tailscale, one command gives you an HTTPS address that only your own devices can reach:
+
+```bash
+tailscale serve --bg --https=8443 http://localhost:8787
+```
+
+Then open `https://<your-machine>.<tailnet>.ts.net:8443` on the phone, enter the access code once, and use *Install app* (Android) or *Share → Add to Home Screen* (iPhone). Set `PUBLIC_URL` in `.env` to that address so notification links use it.
+
 ### Start with Windows
 
 Run `install_autostart.bat` (asks for administrator rights once). It registers a Task Scheduler task that starts Asa in the background at boot — before login, no console window, restarted if it crashes, no password stored. `uninstall_autostart.bat` removes it.

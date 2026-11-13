@@ -71,7 +71,11 @@ const EN = {
   '已新增，把存取碼給對方就能用': 'Added. Give them their access code to get started', '新增成員': 'Add member', '你': 'You',
   '跟另一半或家人共用？新增一位成員：每個人有自己的鬧鐘、待辦和通知，行程和待辦可以選擇「一起」。':
     'Sharing with a partner or family? Add a member: everyone gets their own alarms, to-dos and notifications, and events or to-dos can be marked as shared.',
-  '這天沒有行程': 'Nothing scheduled',
+  '這天沒有行程': 'Nothing scheduled', '取消': 'Cancel',
+  '取消這天的放假？鬧鐘會依行程重排。': 'Remove this day off? Alarms will be re-planned from your schedule.',
+  '刪除這條鬧鐘規則？': 'Delete this alarm rule?', '刪除這個鬧鐘？': 'Delete this alarm?',
+  '刪除這個固定行程？之後每週都不會再出現。': 'Delete this weekly event? It will no longer appear any week.',
+  '刪除這個行程？': 'Delete this event?', '刪除這項待辦？': 'Delete this to-do?', '確定要刪除嗎？': 'Delete this?',
   '櫻花': 'Sakura', '蜜桃': 'Peach', '珊瑚': 'Coral', '葡萄': 'Grape', '霓虹': 'Neon', '冰川': 'Ice', '潟湖': 'Lagoon', '森林': 'Forest', '抹茶': 'Matcha', '夕陽': 'Sunset', '餘燼': 'Ember', '石墨': 'Graphite',
   '手機 App': 'Phone app', '伺服器網址': 'Server URL', '存取碼': 'Access code', '最後同步': 'Last sync', '還沒連上來過': 'Never connected',
   '手機瀏覽器': 'Phone browser', '這台電腦的IP': 'this-computer-ip', '資料來源': 'Sources', '每 {0} 分鐘': 'every {0} min', '還沒執行過': 'Never run',

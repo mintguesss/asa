@@ -31,12 +31,44 @@ function toast(msg) {
   const el = Object.assign(document.createElement('div'), {className: 'toast', textContent: msg});
   document.body.append(el); setTimeout(() => el.remove(), 2600);
 }
-const act = async (path, method, body, msg) => { await api(path, method, body); if (msg) toast(msg); render(); };
+/* 自己畫的確認框（比瀏覽器內建的好看，手機上也不會擋住整個畫面） */
+function ask(msg, ok = t('刪除'), danger = true) {
+  return new Promise(done => {
+    const d = document.createElement('div');
+    d.className = 'ask';
+    d.innerHTML = `<div class="askbox" role="alertdialog" aria-modal="true"><p>${esc(msg)}</p>
+      <div class="askrow"><button class="btn" data-v="0">${t('取消')}</button><button class="btn ${danger ? 'danger' : 'pri'}" data-v="1">${esc(ok)}</button></div></div>`;
+    const close = v => { d.classList.add('out'); setTimeout(() => d.remove(), 180); document.removeEventListener('keydown', key); done(v); };
+    const key = e => { if (e.key === 'Escape') close(false); if (e.key === 'Enter') close(true); };
+    d.onclick = e => { if (e.target === d) close(false); const b = e.target.closest('[data-v]'); if (b) close(b.dataset.v === '1'); };
+    document.addEventListener('keydown', key);
+    document.body.append(d);
+    d.querySelector('[data-v="1"]').focus();
+  });
+}
+/* 刪除前先問；確定之後那一列先縮起來再消失 */
+const ASK = [[/^\/skip\//, '取消這天的放假？鬧鐘會依行程重排。', '取消放假'], [/^\/profiles\//, '移除這位成員？他的資料檔會保留在 data 資料夾。', '移除'],
+  [/^\/alarms\/rules\//, '刪除這條鬧鐘規則？'], [/^\/alarms\/plan\//, '刪除這個鬧鐘？'], [/^\/weekly\//, '刪除這個固定行程？之後每週都不會再出現。'],
+  [/^\/events\//, '刪除這個行程？'], [/^\/tasks\//, '刪除這項待辦？']];
+async function confirmDelete(path, row) {
+  const [, msg, ok] = ASK.find(([re]) => re.test(path)) || [, '確定要刪除嗎？'];
+  if (!await ask(t(msg), t(ok || '刪除'))) return false;
+  if (row) { row.style.height = row.offsetHeight + 'px'; row.classList.add('gone'); await new Promise(r => setTimeout(r, 260)); }
+  return true;
+}
+const rowOf = () => { const el = window.event && window.event.target; return el && el.closest && el.closest('.task,.ev,.ag,.wrow,.rule,.mem'); };
+const act = async (path, method, body, msg) => {
+  if (method === 'DELETE' && !await confirmDelete(path, rowOf())) return;
+  await api(path, method, body); if (msg) toast(msg); render();
+};
 
 /* ---------- 成員：只有一個人用的時候 P.multi 是 false，下面這些都不會出現 ---------- */
 let P = {me: {id: 1, name: '', alarm_mode: 'app'}, multi: false, local: true, admin: true, list: []};
 const loadP = async () => { P = await api('/profiles'); };
-const pact = async (path, method, body, msg) => { await api(path, method, body); await loadP(); if (msg) toast(msg); render(); };
+const pact = async (path, method, body, msg) => {
+  if (method === 'DELETE' && !await confirmDelete(path, rowOf())) return;
+  await api(path, method, body); await loadP(); if (msg) toast(msg); render();
+};
 const own = x => x.owner ? '?owner=' + x.owner : '';                       // 別人共用給我的那一筆，要註明是誰的
 const duo = x => P.multi && (x.owner || x.shared) ? '👥 ' : '';
 const who = x => P.multi && (x.owner || x.shared) ? `<span class="pill duo">👥${x.owner_name ? ' ' + esc(x.owner_name) : ''}</span>` : '';
@@ -196,6 +228,7 @@ function decorate() {
   v.querySelectorAll('.hero>*').forEach((c, i) => c.style.setProperty('--i', i));
   v.classList.toggle('enter', !!S.enter);
   S.enter = false; S.pop = null;
+  reveal(v);
   setPal(); tick();
 }
 function tick() {
@@ -374,7 +407,7 @@ function ruleCard(r) {
   const time = (label, field, v, tip = '') => `<label class="knob" title="${tip}"><span>${t(label)}</span><input type="time" value="${esc(v || '')}" ${P(field, 'this.value||null')}></label>`;
   const follow = r.anchor === 'first_event', n = Math.min(r.count, 30), gap = Math.max(4, Math.min(22, r.interval_minutes * 2)), span = (r.count - 1) * r.interval_minutes;
   return `<div class="rule ${r.enabled ? '' : 'off'}"><div class="hd"><input value="${esc(r.name)}" ${P('name')} aria-label="${t('規則名稱')}"><span class="sp"></span>
-      <button class="x" title="${t('刪除')}" onclick="if(confirm('${t('刪除「{0}」？', esc(r.name))}'))act('/alarms/rules/${r.id}','DELETE')">✕</button>
+      <button class="x" title="${t('刪除')}" onclick="act('/alarms/rules/${r.id}','DELETE')">✕</button>
       <button class="sw ${r.enabled ? 'on' : ''}" title="${r.enabled ? t('啟用中') : t('已停用')}" onclick="act('/alarms/rules/${r.id}','PATCH',{enabled:${r.enabled ? 0 : 1}})"><i></i></button></div>
     <div class="wds">${WD1.map((c, i) => `<button class="wd ${wds.includes(String(i)) ? 'on' : ''}" title="${WDN[i]}" onclick="act('/alarms/rules/${r.id}','PATCH',{weekdays:'${tog(i)}'})">${c}</button>`).join('')}</div>
     <div class="seg sm"><button class="${follow ? 'on' : ''}" onclick="act('/alarms/rules/${r.id}','PATCH',{anchor:'first_event'})">${t('跟著行程')}</button><button class="${follow ? '' : 'on'}" onclick="act('/alarms/rules/${r.id}','PATCH',{anchor:'fixed'})">${t('固定時間')}</button></div>
@@ -440,7 +473,7 @@ VIEW.link = async () => {
           <div class="addrow"><button class="btn pri">${t('儲存')}</button><button type="button" class="btn" onclick="api('/profiles/${p.id}/test','POST').then(sent)">${t('測試')}</button></div>
           <div class="muted" style="margin-top:8px">${p.id === 1 ? t('留空的欄位不會變動；沒填的管道會用 .env 裡的設定。') : t('留空的欄位不會變動。要清掉某一欄，填一個空白再儲存。')}</div></form></details>
       <div class="addrow">${P.local && !p.me ? `<button class="btn" onclick="api('/profiles/${p.id}/switch','POST').then(()=>location.reload())">${t('在這台電腦切換成這個人')}</button>` : ''}
-        ${P.admin && p.id !== 1 ? `<button class="btn" onclick="if(confirm('${t('移除這位成員？他的資料檔會保留在 data 資料夾。')}'))pact('/profiles/${p.id}','DELETE')">${t('移除')}</button>` : ''}</div>`}</details>`;
+        ${P.admin && p.id !== 1 ? `<button class="btn" onclick="pact('/profiles/${p.id}','DELETE')">${t('移除')}</button>` : ''}</div>`}</details>`;
   };
   const members = `<div class="card"><h3>${P.multi ? t('成員') : t('提醒與共用')}${P.admin ? ` <span class="r"><button class="btn" onclick="const n=prompt('${t('新成員的名字')}');if(n)pact('/profiles','POST',{name:n},'${t('已新增，把存取碼給對方就能用')}')">＋ ${t('新增成員')}</button></span>` : ''}</h3>
       ${P.multi ? '' : `<div class="muted" style="margin-bottom:6px">${t('跟另一半或家人共用？新增一位成員：每個人有自己的鬧鐘、待辦和通知，行程和待辦可以選擇「一起」。')}</div>`}
@@ -505,6 +538,35 @@ document.addEventListener('keydown', e => {
   }
 });
 setInterval(() => { if (S.view === 'day' && !/INPUT|SELECT/.test(document.activeElement.tagName)) render(); }, 60000);
+/* ---------- 觸控裝置的動畫：沒有 hover，改成點擊漣漪和捲動進場 ---------- */
+const TOUCH = matchMedia('(hover:none),(pointer:coarse)').matches;
+const CALM = matchMedia('(prefers-reduced-motion:reduce)').matches;
+document.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse' || CALM) return;
+  const el = e.target.closest('.btn,.hb,.nav,.mc,.task,.ag,.pal,.palm,.seg button,.tbtn,.d,.wd,.bell');
+  if (!el) return;
+  const r = el.getBoundingClientRect(), s = Math.max(r.width, r.height) * 2.2;
+  const w = document.createElement('span');
+  w.className = 'tap';
+  w.style.cssText = `width:${s}px;height:${s}px;left:${e.clientX - r.left - s / 2}px;top:${e.clientY - r.top - s / 2}px`;
+  if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+  el.classList.add('tapped');
+  el.append(w);
+  setTimeout(() => w.remove(), 600);
+}, {passive: true});
+let revealer;
+function reveal(root) {
+  if (!TOUCH || CALM || !('IntersectionObserver' in window)) return;
+  revealer?.disconnect();
+  revealer = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); revealer.unobserve(e.target); } }),
+    {rootMargin: '0px 0px -8% 0px'});
+  // 一開始就在畫面裡的不用等；畫面下方的捲到才浮上來
+  root.querySelectorAll('.card,.runway,.agenda .ag,.week .col,.wrow,.rule').forEach((el, i) => {
+    if (el.getBoundingClientRect().top < innerHeight * .92) return;
+    el.classList.add('rv'); el.style.setProperty('--rv', (i % 4) * 50 + 'ms'); revealer.observe(el);
+  });
+}
+
 /* 裝成 App（PWA）：註冊 service worker（只在 HTTPS 或這台電腦上有效） */
 if ('serviceWorker' in navigator && isSecureContext) navigator.serviceWorker.register('/sw.js').catch(() => {});
 

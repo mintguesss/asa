@@ -252,7 +252,8 @@ async def guard(request: Request, call_next):
     """本機直接放行；其他裝置（手機）要帶存取碼。存取碼同時決定「你是哪位成員」。"""
     host = request.client.host if request.client else ""
     i18n.set_lang(request.headers.get("x-lang"))
-    if host in ("127.0.0.1", "::1", "testclient"):
+    proxied = any(h in request.headers for h in ("x-forwarded-for", "forwarded", "tailscale-user-login"))
+    if host in ("127.0.0.1", "::1", "testclient") and not proxied:   # 經過反向代理（Tailscale Serve 等）來的不算本機
         # 這台電腦上：預設是第一位成員，設定頁可以切換（記在 cookie）
         pick_ = request.headers.get("x-profile") or request.cookies.get("asa_profile") or "1"
         LOCAL.set(True)

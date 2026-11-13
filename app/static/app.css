@@ -441,4 +441,30 @@ pre.brief{white-space:pre-wrap;font:14px/1.75 var(--font);margin:0;color:var(--i
   /* 毛玻璃在手機上很吃效能，模糊程度降低 */
   .card,.runway,.week .col,.month{backdrop-filter:blur(12px)}
   *{-webkit-tap-highlight-color:transparent}
+  /* 點擊漣漪 */
+  .tapped{overflow:hidden}
+  .nav.tapped,.bell.tapped,.wd.tapped,.pal.tapped{overflow:visible}
+  .tap{position:absolute;border-radius:50%;pointer-events:none;background:radial-gradient(circle,color-mix(in srgb,var(--a2) 45%,transparent),transparent 70%);
+    transform:scale(0);opacity:.8;animation:tap .55s cubic-bezier(.2,.7,.3,1) forwards;z-index:0}
+  @keyframes tap{to{transform:scale(1);opacity:0}}
+  /* 捲動進場 */
+  .rv{opacity:0;transform:translateY(22px) scale(.98)}
+  .rv.in{opacity:1;transform:none;transition:opacity .55s var(--ease) var(--rv,0ms),transform .65s var(--ease) var(--rv,0ms)}
+  /* 切換頁面時，導覽列目前那一格的圖示彈一下 */
+  .nav.on svg{animation:navpop .45s cubic-bezier(.3,1.6,.5,1)}
+  @keyframes navpop{0%{transform:scale(.7)}60%{transform:scale(1.18)}100%{transform:scale(1)}}
 }
+
+/* ---------- 刪除：先確認，確定後那一列縮起來 ---------- */
+.ask{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:20px;background:rgba(5,6,16,.45);backdrop-filter:blur(6px);animation:askin .18s ease both}
+.ask.out{animation:askout .18s ease both}
+.askbox{width:100%;max-width:340px;background:var(--pop);border:1px solid rgba(var(--w),.18);border-radius:20px;padding:20px;box-shadow:0 30px 80px -20px rgba(0,0,20,.6);animation:askpop .32s cubic-bezier(.3,1.4,.5,1) both}
+.askbox p{margin:0 0 18px;font-size:15px;line-height:1.6;color:var(--ink)}
+.askrow{display:flex;gap:10px}.askrow .btn{flex:1;justify-content:center;padding:11px}
+.btn.danger{background:color-mix(in srgb,var(--red) 85%,transparent);border-color:transparent;color:#fff;font-weight:600}
+.ask.out .askbox{animation:askdrop .18s ease both}
+@keyframes askin{from{opacity:0}}@keyframes askout{to{opacity:0}}
+@keyframes askpop{from{opacity:0;transform:translateY(16px) scale(.94)}}@keyframes askdrop{to{opacity:0;transform:scale(.96)}}
+.gone{overflow:hidden;animation:gone .26s ease forwards!important;pointer-events:none}
+@keyframes gone{to{opacity:0;transform:translateX(24px);height:0;padding-top:0;padding-bottom:0;margin-top:0;margin-bottom:0}}
+@media (max-width:820px){.ask{place-items:end center;padding:14px 12px calc(14px + env(safe-area-inset-bottom,0px))}.askbox{max-width:none}}
