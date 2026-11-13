@@ -16,7 +16,7 @@ const isDeadline = e => e.title.startsWith('⏰');
 const flagText = e => e.title.replace('⏰ 截止：', t('截止') + ' ');
 
 const S = {view: 'day', cal: 'day', date: TODAY(), inbox: 0};
-S.view = S.cal = ['day', 'week', 'month'].includes(store.get('cal2')) ? store.get('cal2') : 'month';
+S.view = S.cal = ['day', 'week', 'month'].includes(store.get('cal3')) ? store.get('cal3') : 'week';
 if (['day', 'week', 'month'].includes(QS.get('view'))) S.view = S.cal = QS.get('view');
 else if (['tasks', 'inbox', 'alarms', 'weekly', 'link', 'activity'].includes(QS.get('view'))) S.view = QS.get('view');
 if (/^\d{4}-\d{2}-\d{2}$/.test(QS.get('date') || '')) S.date = QS.get('date');
@@ -135,7 +135,7 @@ function drawRail() {
 }
 addEventListener('resize', () => moveInd($('#rail'), $('#rail .nav.on'), false));
 function go(v, d) {
-  S.view = v; if (isCal(v)) { S.cal = v; store.set('cal2', v); }
+  S.view = v; if (isCal(v)) { S.cal = v; store.set('cal3', v); }
   if (d) S.date = d; S.enter = true; window.scrollTo(0, 0);
   if (palPref() === 'random') S.rnd = randomPal();          // 隨機模式：每換一頁換一個顏色
   return document.startViewTransition && !document.hidden ? document.startViewTransition(() => render()).updateCallbackDone : render();
@@ -380,7 +380,19 @@ VIEW.day = async () => {
 };
 
 /* ---------- 週 ---------- */
+/* 週（預設畫面）：七天各一格，行程用跟月曆一樣的彩色標籤；點一天拉出那天的面板 */
 VIEW.week = async () => {
+  const days = await api('/week?d=' + S.date), mob = MOB(), a = days[0].date, b = days[6].date;
+  const bar = calbar(mob && a.slice(0, 7) === b.slice(0, 7) ? `${md(a)}–${+b.slice(8)}` : `${md(a)} – ${md(b)}`);
+  const colorOf = e => e.owner ? (P.list.find(p => p.id === e.owner) || {}).color || hue(e.title) : hue(e.title);
+  const item = e => isDeadline(e) ? `<div class="wl d"><i class="num">${esc(e.time)}</i>${esc(flagText(e))}</div>`
+    : `<div class="wl" style="--c:${esc(colorOf(e))}"><i class="num">${esc(e.time)}</i><span>${duo(e)}${esc(e.title)}</span>${e.comments ? `<em>${BUBBLE}${e.comments}</em>` : ''}</div>`;
+  return bar + `<div class="wk ${mob ? 'rows' : 'cols'}" id="wkgrid">${days.map(s => { const on = s.alarms.filter(a => a.enabled), w = wdOf(s.date);
+    return `<button class="wd2 ${s.date === TODAY() ? 'today' : ''} ${w > 4 ? 'we' : ''}" onclick="openDaySheet('${s.date}')">
+      <div class="wdh"><span>${WD1[w]}</span><b class="dn num">${+s.date.slice(8)}</b>${on.length && P.me.alarm_mode !== 'off' ? `<em class="num">⏰${on[0].time}</em>` : ''}</div>
+      <div class="wdb">${s.events.length ? s.events.map(item).join('') : `<span class="none">${s.skip ? '🚫 ' + esc(s.skip.reason || t('放假')) : ''}</span>`}</div></button>`; }).join('')}</div>`;
+};
+VIEW.week_old = async () => {
   const days = await api('/week?d=' + S.date), bar = calbar(`${md(days[0].date)} – ${md(days[6].date)}`);
   if (MOB()) return bar + `<div class="wlist">${days.map(s => { const open = s.tasks.day.filter(k => !k.done), on = s.alarms.filter(a => a.enabled);
     return `<button class="wrow ${s.date === TODAY() ? 'today' : ''}" onclick="go('day','${s.date}')"><div class="wd"><b class="num">${+s.date.slice(8)}</b><span>${WDN[wdOf(s.date)]}</span></div>
@@ -399,14 +411,17 @@ VIEW.week = async () => {
 /* 月曆（首頁）：格子裡直接寫行程名稱、依種類上色；點一天，下面列出那天的行程 */
 /* 月曆（首頁），參考 TimeTree：格子撐滿整個畫面、行程名稱直接寫在格子裡；
    手機上點一天，從底部拉出那天的面板；右下角「＋」新增 */
-const bare = () => S.view === 'month' && MOB();
+const bare = () => false;
 async function pickDay(d) {
   if (d.slice(0, 7) !== S.date.slice(0, 7)) return go('month', d);
   S.date = d;
   if (MOB()) { document.querySelectorAll('.cal .mc.sel').forEach(x => x.classList.remove('sel')); document.querySelector(`.cal .mc[data-d="${d}"]`)?.classList.add('sel'); return openDaySheet(d); }
   await render();
 }
-const label = e => `<div class="lb ${e.kind}" ${e.color ? `style="--c:${esc(e.color)}"` : ''}>${esc(e.title)}</div>`;
+/* 行程標籤的顏色：一起的用對方的顏色，其他依名稱固定配一個（同一門課每次都同色，像 TimeTree 那樣五顏六色但不亂） */
+const LBC = ['#f0a020', '#8e6cef', '#2fb47c', '#3a9ad9', '#e8577a', '#ff7f3f', '#c862c2', '#17a8a0', '#6f8cff', '#b98a2e'];
+const hue = s => { let h = 0; for (const ch of s) h = (h * 31 + ch.codePointAt(0)) >>> 0; return LBC[h % LBC.length]; };
+const label = e => `<div class="lb ${e.kind}" style="--c:${esc(e.color || hue(e.title))}">${esc(e.title)}</div>`;
 function dayPanel(s, inSheet) {
   const on = s.alarms.filter(a => a.enabled), evs = s.events.filter(e => !isDeadline(e)), d = s.date;
   const due = s.tasks.upcoming_due.filter(k => k.due.slice(0, 10) === d);
@@ -444,22 +459,19 @@ VIEW.month = async () => {
   const [m, s] = await Promise.all([api('/month?d=' + S.date), mob ? null : api('/day?d=' + S.date)]), first = new Date(m.month + '-01T12:00');
   const title = LANG === 'en' ? `${first.toLocaleDateString(LOCALE, {month: 'long'})} <small>${first.getFullYear()}</small>` : `${first.getMonth() + 1} 月 <small>${first.getFullYear()}</small>`;
   // 一格放得下幾條：依畫面高度算（手機約 5 條，桌機 5～6 條）
-  const avail = mob ? innerHeight - 64 - 26 - 78 : Math.max(560, innerHeight - 260);
+  const avail = mob ? innerHeight - 200 - 26 : Math.max(560, innerHeight - 260);
   const n = Math.max(2, Math.floor((avail / 6 - 26) / (mob ? 16 : 19)));
   const grid = `<div class="cal" style="--rows:6"><div class="mh">${WD1.map((c, i) => `<span class="${i > 4 ? 'we' : ''}">${c}</span>`).join('')}</div>
     <div class="mg" id="mgrid">${m.days.map(d => { const items = [...d.events.map(label), ...d.due.map(k => `<div class="lb d">${esc(k)}</div>`)];
       const more = items.length > n ? items.length - (n - 1) : 0;
       return `<button class="mc ${d.in_month ? '' : 'out'} ${d.date === TODAY() ? 'today' : ''} ${d.date === S.date && !mob ? 'sel' : ''} ${d.skip ? 'skip' : ''} ${wdOf(d.date) > 4 ? 'we' : ''}" data-d="${d.date}" onclick="pickDay('${d.date}')">
         <span class="dn num">${+d.date.slice(8)}</span>${(more ? items.slice(0, n - 1) : items).join('')}${more ? `<div class="lb more">+${more}</div>` : ''}</button>`; }).join('')}</div></div>`;
-  if (mob) {
-    $('#mtitle').innerHTML = `<button class="mt-b" onclick="step(-1)" aria-label="${t('往前')}">‹</button><b onclick="go('month',TODAY())">${title}</b><button class="mt-b" onclick="step(1)" aria-label="${t('往後')}">›</button>`;
-    return grid + `<button class="fab" onclick="openDaySheet(S.date,true)" aria-label="${t('新增行程')}"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>`;
-  }
+  if (mob) return calbar(title) + grid;
   return calbar(title) + `<div class="mwrap">${grid}<div class="card daypanel">${dayPanel(s, false)}</div></div>`;
 };
 /* 手機月曆：左右滑換月 */
 let swX = null, swY = 0;
-document.addEventListener('touchstart', e => { if (bare() && e.target.closest('#mgrid')) { swX = e.touches[0].clientX; swY = e.touches[0].clientY; } }, {passive: true});
+document.addEventListener('touchstart', e => { if (e.target.closest && e.target.closest('#mgrid,#wkgrid')) { swX = e.touches[0].clientX; swY = e.touches[0].clientY; } }, {passive: true});
 document.addEventListener('touchend', e => {
   if (swX === null) return;
   const dx = e.changedTouches[0].clientX - swX, dy = e.changedTouches[0].clientY - swY; swX = null;
