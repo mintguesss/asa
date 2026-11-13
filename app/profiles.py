@@ -117,6 +117,46 @@ def delete(pid: int) -> None:
         pass
 
 
+AVATAR_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+
+def avatar_dir():
+    return db.DB_PATH.parent / f"{db.DB_PATH.stem}-avatars"     # data/asa-avatars；示範模式用 demo-avatars
+
+
+def avatar_file(pid: int):
+    for ext in AVATAR_TYPES.values():
+        f = avatar_dir() / f"{int(pid)}.{ext}"
+        if f.exists():
+            return f
+    return None
+
+
+def avatar_url(p: dict) -> str | None:
+    return f"/api/avatar/{p['id']}?v={p['avatar']}" if p.get("avatar") and avatar_file(p["id"]) else None
+
+
+def set_avatar(pid: int, mime: str, data: bytes) -> None:
+    """存頭貼。前端已經裁成小方圖，這裡只檢查類型和大小。"""
+    if mime not in AVATAR_TYPES or not data or len(data) > 600_000:
+        raise ValueError("bad image")
+    avatar_dir().mkdir(parents=True, exist_ok=True)
+    old = avatar_file(pid)
+    if old:
+        old.unlink()
+    (avatar_dir() / f"{int(pid)}.{AVATAR_TYPES[mime]}").write_bytes(data)
+    with db.as_profile(1):
+        db.update("profiles", int(pid), {"avatar": str(int(time.time()))})
+
+
+def clear_avatar(pid: int) -> None:
+    old = avatar_file(pid)
+    if old:
+        old.unlink()
+    with db.as_profile(1):
+        db.update("profiles", int(pid), {"avatar": None})
+
+
 def each():
     """依序切到每位成員：for p in profiles.each(): …（排程工作用）。"""
     for p in all():

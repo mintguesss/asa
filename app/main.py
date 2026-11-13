@@ -1,7 +1,10 @@
 """Asa 主程式：API + 排程 + 網頁介面。"""
+import base64
+import binascii
 import contextvars
 import os
 import secrets
+import shutil
 import socket
 import subprocess
 from contextlib import asynccontextmanager, contextmanager
@@ -33,6 +36,7 @@ if DEMO:
     db.DB_PATH = db.DB_PATH.with_name("demo.db")
     for _old in db.DB_PATH.parent.glob("demo*.db*"):
         _old.unlink(missing_ok=True)
+    shutil.rmtree(db.DB_PATH.parent / "demo-avatars", ignore_errors=True)
 
 
 def today() -> str:
@@ -651,7 +655,8 @@ def source_run(name: str):
 # ---------- 成員 ----------
 def profile_view(p: dict, full: bool) -> dict:
     """給前端看的成員資料；full = 自己或管理者才看得到存取碼和設定。"""
-    out = {"id": p["id"], "name": p["name"], "color": p["color"], "me": p["id"] == db.me()}
+    out = {"id": p["id"], "name": p["name"], "color": p["color"], "me": p["id"] == db.me(),
+           "avatar": profiles.avatar_url(p)}
     if full:
         with db.as_profile(p["id"]):
             chans = [c | {"label": tr(c["label"])} for c in notify.channels()]
@@ -713,6 +718,37 @@ def switch_profile(id_: int):
     resp = JSONResponse({"ok": True})
     resp.set_cookie("asa_profile", str(id_), max_age=31536000, samesite="lax")
     return resp
+
+
+@app.post("/api/profiles/{id_}/avatar")
+def upload_avatar(id_: int, body: dict = Body(...)):
+    """body: {data: "data:image/jpeg;base64,…"}（前端會先裁成 256×256）"""
+    if not (is_admin() or id_ == db.me()):
+        raise HTTPException(403, tr("只能改自己的設定"))
+    if not profiles.get(id_):
+        raise HTTPException(404, tr("沒有這位成員"))
+    head, _, b64 = str(body.get("data", "")).partition(",")
+    try:
+        profiles.set_avatar(id_, head.removeprefix("data:").removesuffix(";base64"), base64.b64decode(b64, validate=True))
+    except (ValueError, binascii.Error):
+        raise HTTPException(400, tr("圖片格式不支援或太大")) from None
+    return {"avatar": profiles.avatar_url(profiles.get(id_))}
+
+
+@app.delete("/api/profiles/{id_}/avatar")
+def delete_avatar(id_: int):
+    if not (is_admin() or id_ == db.me()):
+        raise HTTPException(403, tr("只能改自己的設定"))
+    profiles.clear_avatar(id_)
+    return {"ok": True}
+
+
+@app.get("/api/avatar/{id_}")
+def get_avatar(id_: int):
+    f = profiles.avatar_file(id_)
+    if not f:
+        raise HTTPException(404, tr("沒有這位成員"))
+    return FileResponse(f, headers={"Cache-Control": "private, max-age=31536000"})
 
 
 @app.post("/api/profiles/{id_}/test")

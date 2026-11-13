@@ -6,6 +6,18 @@
 (function () {
   document.addEventListener('pointermove', e => {
     if (e.pointerType !== 'mouse') return;   // 觸控不追蹤（Asa 的修改）
+    aim(e);
+  }, { passive: true });
+
+  /* 觸控：點一下卡片，邊框從手指那一側亮起來再淡掉（Asa 的修改） */
+  document.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') return;
+    const card = aim(e); if (!card) return;
+    card.classList.remove('tglow'); void card.offsetWidth; card.classList.add('tglow');
+    clearTimeout(card._tg); card._tg = setTimeout(() => card.classList.remove('tglow'), 900);
+  }, { passive: true });
+
+  function aim(e) {
     const card = e.target.closest && e.target.closest('.border-glow-card');
     if (!card) return;
     const rect = card.getBoundingClientRect();
@@ -19,7 +31,8 @@
     if (degrees < 0) degrees += 360;
     card.style.setProperty('--edge-proximity', (edge * 100).toFixed(3));
     card.style.setProperty('--cursor-angle', degrees.toFixed(3) + 'deg');
-  }, { passive: true });
+    return card;
+  }
 
   const GRADIENT_POSITIONS = ['80% 55%', '69% 34%', '8% 6%', '41% 38%', '86% 85%', '82% 18%', '51% 4%'];
   const GRADIENT_KEYS = ['--gradient-one', '--gradient-two', '--gradient-three', '--gradient-four', '--gradient-five', '--gradient-six', '--gradient-seven'];

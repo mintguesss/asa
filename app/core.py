@@ -50,7 +50,8 @@ def others_on(d: str) -> list[dict]:
             evs = [e for e in events_on(d) if not e.get("owner") and not e.get("shared")
                    and not e["title"].startswith("⏰")]
             on = [a["time"] for a in plan(d) if a["enabled"]] if p["alarm_mode"] != "off" else []
-        out.append({"id": p["id"], "name": p["name"], "color": p["color"], "alarm": on[0] if on else None,
+        out.append({"id": p["id"], "name": p["name"], "color": p["color"], "avatar": profiles.avatar_url(p),
+                    "alarm": on[0] if on else None,
                     "events": [{"time": e["time"], "end_time": e["end_time"],
                                 "title": e["title"] if p["visible"] == "full" else None,
                                 "location": e.get("location", "") if p["visible"] == "full" else ""} for e in evs]})

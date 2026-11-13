@@ -107,7 +107,8 @@ CREATE TABLE IF NOT EXISTS profiles (        -- 成員名單（只用第一位�
     remind_minutes INTEGER DEFAULT 0,   -- 行程開始前幾分鐘推播提醒；0 = 不提醒
     visible TEXT DEFAULT 'busy',    -- 其他成員看我的行程：full / busy / none
     lang TEXT,
-    notify TEXT DEFAULT '{}'        -- 這個人的通知管道設定（JSON）
+    notify TEXT DEFAULT '{}',       -- 這個人的通知管道設定（JSON）
+    avatar TEXT                     -- 頭貼的版本（上傳時間）；檔案在 data/asa-avatars/<id>.<副檔名>
 );
 """
 
@@ -162,7 +163,8 @@ def init_one() -> None:
         # 舊資料庫升級：補上後來才加的欄位
         for table, cols in (("inbox", (("end", "TEXT"), ("location", "TEXT DEFAULT ''"))),
                             ("events", (("shared", "INTEGER DEFAULT 0"),)),
-                            ("tasks", (("shared", "INTEGER DEFAULT 0"),))):
+                            ("tasks", (("shared", "INTEGER DEFAULT 0"),)),
+                            ("profiles", (("avatar", "TEXT"),))):
             have = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
             for col, ddl in cols:
                 if col not in have:

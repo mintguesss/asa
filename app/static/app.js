@@ -70,9 +70,33 @@ const pact = async (path, method, body, msg) => {
   await api(path, method, body); await loadP(); if (msg) toast(msg); render();
 };
 const own = x => x.owner ? '?owner=' + x.owner : '';                       // 別人共用給我的那一筆，要註明是誰的
-const duo = x => P.multi && (x.owner || x.shared) ? '👥 ' : '';
-const who = x => P.multi && (x.owner || x.shared) ? `<span class="pill duo">👥${x.owner_name ? ' ' + esc(x.owner_name) : ''}</span>` : '';
-const shareBox = () => P.multi ? `<label class="share" title="${t('其他成員也看得到')}"><input type="checkbox" name="shared"><span>👥 ${t('一起')}</span></label>` : '';
+const DUO = '<svg class="duoi" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.4 3-5.2 6-5.2s5.4 1.8 6 5.2"/><circle cx="16.5" cy="9" r="2.6"/><path d="M15.5 14c2.7-.2 4.9 1.4 5.5 4.6"/></svg>';
+const duo = x => P.multi && (x.owner || x.shared) ? DUO + ' ' : '';
+const who = x => P.multi && (x.owner || x.shared) ? `<span class="pill duo">${DUO}${x.owner_name ? ' ' + esc(x.owner_name) : ''}</span>` : '';
+const shareBox = () => P.multi ? `<label class="share" title="${t('其他成員也看得到')}"><input type="checkbox" name="shared"><span>${DUO} ${t('一起')}</span></label>` : '';
+/* 頭貼：有上傳就用照片，沒有就是顏色圓圈加名字第一個字 */
+const face = (p, cls = '') => p.avatar ? `<img class="face ${cls}" src="${esc(p.avatar)}" alt="">`
+  : `<span class="face ${cls}" style="--c:${esc(p.color || '#7c5cff')}">${esc([...(p.name || '?')][0].toUpperCase())}</span>`;
+/* 選圖 → 裁成正中間的正方形、縮成 256px → 上傳 */
+function pickAvatar(pid) {
+  const inp = Object.assign(document.createElement('input'), {type: 'file', accept: 'image/*'});
+  inp.onchange = () => {
+    const file = inp.files[0]; if (!file) return;
+    const img = new Image();
+    img.onload = async () => {
+      const n = Math.min(img.width, img.height), c = Object.assign(document.createElement('canvas'), {width: 256, height: 256});
+      c.getContext('2d').drawImage(img, (img.width - n) / 2, (img.height - n) / 2, n, n, 0, 0, 256, 256);
+      URL.revokeObjectURL(img.src);
+      await api(`/profiles/${pid}/avatar`, 'POST', {data: c.toDataURL('image/jpeg', .86)});
+      await loadP(); toast(t('頭貼已更新')); render();
+    };
+    img.onerror = () => toast(t('讀不了這張圖'));
+    img.src = URL.createObjectURL(file);
+  };
+  inp.click();
+}
+/* 設定頁裡的選項：只存檔、不重畫整頁（重畫會閃一下） */
+async function quietSave(pid, body) { await api(`/profiles/${pid}`, 'PATCH', body); await loadP(); drawRail(); }
 const formData = f => Object.fromEntries([...new FormData(f)].filter(([, v]) => v !== ''));
 
 /* ---------- 導覽 ---------- */
@@ -87,12 +111,29 @@ const ICON = {
 const NAV = [['cal', '日曆'], ['tasks', '待辦'], ['inbox', '審核'], ['alarms', '鬧鐘'], ['weekly', '固定行程'], ['link', '設定']];
 const CAL = [['day', '日'], ['week', '週'], ['month', '月']];
 const isCal = v => CAL.some(([k]) => k === v);
-function drawRail() {
-  $('#rail').innerHTML = NAV.filter(([k]) => k !== 'alarms' || P.me.alarm_mode !== 'off').map(([k, v]) => {
-    const on = k === 'cal' ? isCal(S.view) : S.view === k;
-    return `<button class="nav ${on ? 'on' : ''}" onclick="go('${k === 'cal' ? S.cal : k}')"><svg viewBox="0 0 24 24">${ICON[k]}</svg><span>${k === 'link' && P.multi ? esc(P.me.name) : t(v)}</span>${k === 'inbox' && S.inbox ? `<span class="dot">${S.inbox}</span>` : ''}</button>`;
-  }).join('');
+let navAt = null;
+function moveInd(rail, b, animate) {
+  const ind = rail.querySelector('.ind'); if (!ind || !b) return;
+  const to = {x: b.offsetLeft, w: b.offsetWidth};
+  if (!animate || !navAt || CALM) { ind.style.transition = 'none'; ind.style.transform = `translateX(${to.x}px)`; ind.style.width = to.w + 'px'; void ind.offsetWidth; ind.style.transition = ''; }
+  else { ind.style.transform = `translateX(${to.x}px)`; ind.style.width = to.w + 'px'; }
+  navAt = to;
 }
+document.addEventListener('click', e => {               // 一點下去底色就先滑過去，不用等新頁面
+  const b = e.target.closest && e.target.closest('#rail .nav'); if (!b) return;
+  $('#rail').querySelectorAll('.nav').forEach(x => x.classList.toggle('on', x === b)); moveInd($('#rail'), b, true);
+}, true);
+function drawRail() {
+  const rail = $('#rail');
+  rail.innerHTML = '<i class="ind"></i>' + NAV.filter(([k]) => k !== 'alarms' || P.me.alarm_mode !== 'off').map(([k, v]) => {
+    const on = k === 'cal' ? isCal(S.view) : S.view === k;
+    return `<button class="nav ${on ? 'on' : ''}" onclick="go('${k === 'cal' ? S.cal : k}')">${k === 'link' && P.me.avatar ? face(P.me, 'navface') : `<svg viewBox="0 0 24 24">${ICON[k]}</svg>`}<span>${k === 'link' && P.multi ? esc(P.me.name) : t(v)}</span>${k === 'inbox' && S.inbox ? `<span class="dot">${S.inbox}</span>` : ''}</button>`;
+  }).join('');
+  if (navAt) { const ind = rail.querySelector('.ind'); ind.style.transition = 'none'; ind.style.transform = `translateX(${navAt.x}px)`; ind.style.width = navAt.w + 'px'; void ind.offsetWidth; ind.style.transition = ''; }
+  if (!navAt) moveInd(rail, rail.querySelector('.nav.on'), false);          // 第一次：直接放到位
+  else requestAnimationFrame(() => moveInd(rail, rail.querySelector('.nav.on'), true));
+}
+addEventListener('resize', () => moveInd($('#rail'), $('#rail .nav.on'), false));
 function go(v, d) {
   S.view = v; if (isCal(v)) { S.cal = v; store.set('cal', v); }
   if (d) S.date = d; S.enter = true; window.scrollTo(0, 0);
@@ -284,7 +325,7 @@ function saying(s) {
   return parts.map(esc).join('　·　');
 }
 function othersCard(s) {
-  return (s.others || []).map(o => `<div class="card other"><h3><i class="pdot" style="background:${esc(o.color)}"></i>${esc(o.name)}
+  return (s.others || []).map(o => `<div class="card other"><h3>${face(o, 'sm')}${esc(o.name)}
       ${o.alarm ? `<span class="r muted num" title="${t('第一個鬧鐘')}">⏰ ${esc(o.alarm)}</span>` : ''}</h3>
     ${o.events.length ? `<div class="agenda">${o.events.map(e => `<div class="ag"><i class="num">${esc(e.time)}${e.end_time ? `<s>${esc(e.end_time)}</s>` : ''}</i>
       <b>${e.title === null ? `<span class="muted">${t('有事')}</span>` : esc(e.title)}${e.location ? `<em>${esc(e.location)}</em>` : ''}</b></div>`).join('')}</div>`
@@ -298,8 +339,7 @@ VIEW.day = async () => {
   const evForm = `<form class="addrow" onsubmit="event.preventDefault();const f=formData(this);act('/events','POST',{title:f.title,start:S.date+'T'+f.time,end:f.end?S.date+'T'+f.end:null,location:f.location||'',shared:f.shared?1:0})">
       <input class="field" type="time" name="time" required><input class="field" type="time" name="end" title="${t('結束（可不填）')}">
       <input class="field" type="text" name="title" placeholder="${t('新增行程')}" required><input class="field" type="text" name="location" placeholder="${t('地點')}" style="max-width:110px">${shareBox()}<button class="btn pri">${t('加入')}</button></form>`;
-  const dayOff = s.skip ? `<button class="hb" onclick="act('/skip/${S.date}','DELETE',null,'${t('已取消放假')}')">${t('取消放假')}</button>`
-    : `<button class="hb" title="${t('這天的固定行程不算，鬧鐘會重排')}" onclick="const r=prompt('${t('放假原因')}','${t('放假')}');if(r!==null)act('/skip','POST',{date:S.date,reason:r},'${t('這天的固定行程不算，鬧鐘已重排')}')">${t('這天放假')}</button>`;
+  const dayOff = s.skip ? `<button class="hb" onclick="act('/skip/${S.date}','DELETE',null,'${t('已取消放假')}')">${t('取消放假')}</button>` : '';
   return `<section class="hero">${calbar('', dayOff)}
       <div class="hgrid"><div><div class="eyebrow">${WDN[wdOf(S.date)]}${isToday ? ' · ' + t('今天') : S.date === shift(TODAY(), 1) ? ' · ' + t('明天') : ''}</div>
           <h1 class="date" data-t="${dt}"><span>${dt}</span></h1>${s.skip ? `<div class="say">🚫 ${esc(s.skip.reason || t('放假'))}</div>` : ''}</div>
@@ -377,13 +417,13 @@ function taskForm() {
     <div class="tadd-top"><input class="field big" type="text" name="title" placeholder="${t('新增待辦…')}" required autocomplete="off"><button class="btn pri">${t('加入')}</button></div>
     <div class="tadd-opts">
       <div class="seg sm when">${[['today', '今天'], ['tomorrow', '明天'], ['week', '這週內'], ['pick', '選日期']].map(([v, l], i) => `<button type="button" data-w="${v}" class="${i ? '' : 'on'}" onclick="whenPick(this)">${t(l)}</button>`).join('')}</div>
-      <input class="field" type="date" name="pick" value="${shift(TODAY(), 2)}" hidden>
-      <button type="button" class="chipbtn" onclick="this.hidden=true;const d=this.nextElementSibling;d.hidden=false;d.focus()">＋ ${t('截止時間')}</button>
-      <input class="field" type="datetime-local" name="due" hidden>
+      <label class="lf" data-for="pick" hidden><span>${t('哪天做')}</span><input class="field" type="date" name="pick" value="${shift(TODAY(), 2)}"></label>
+      <button type="button" class="chipbtn" onclick="this.hidden=true;const d=this.nextElementSibling;d.hidden=false;d.querySelector('input').focus()">＋ ${t('截止時間')}</button>
+      <label class="lf" hidden><span>${t('截止')}</span><input class="field" type="datetime-local" name="due"></label>
       ${shareBox()}
     </div></form>`;
 }
-function whenPick(b) { b.closest('form').querySelector('[name=pick]').hidden = b.dataset.w !== 'pick'; }
+function whenPick(b) { b.closest('form').querySelector('[data-for=pick]').hidden = b.dataset.w !== 'pick'; }
 async function addTask(f) {
   const v = formData(f), w = f.querySelector('.when .on').dataset.w, td = TODAY();
   const body = {title: v.title, due: v.due || null, shared: v.shared ? 1 : 0, scope: w === 'week' ? 'week' : 'day',
@@ -503,10 +543,12 @@ VIEW.link = async () => {
         <button class="palm ${pref === 'random' ? 'on' : ''}" onclick="setPalPref('random')" title="${t('每換一頁隨機換一個顏色')}">🎲 ${t('隨機')}</button>
         ${Object.entries(PAL).map(([k, c]) => `<button class="pal ${pref === k ? 'on' : ''}" onclick="setPalPref('${k}')" title="${t(PAL_NAME[k])}" aria-label="${t(PAL_NAME[k])}" style="background:linear-gradient(135deg,${c.a.join(',')})"></button>`).join('')}</div></dd></dl></div>`;
   const member = p => {
-    const full = 'token' in p, patch = f => `pact('/profiles/${p.id}','PATCH',${f})`;
+    const full = 'token' in p, patch = f => `quietSave(${p.id},${f})`;
     const pick = (field, opts) => `<div class="seg sm">${opts.map(([v, l]) => `<button class="${p[field] === v ? 'on' : ''}" onclick="${patch(`{${field}:'${v}'}`)}">${t(l)}</button>`).join('')}</div>`;
-    return `<details class="mem" ${p.me ? 'open' : ''}><summary><i class="pdot" style="background:${esc(p.color)}"></i><b>${esc(p.name)}</b>${p.me && P.multi ? `<span class="pill teal">${t('你')}</span>` : ''}</summary>
+    return `<details class="mem" ${p.me ? 'open' : ''}><summary>${face(p, 'md')}<b>${esc(p.name)}</b>${p.me && P.multi ? `<span class="pill teal">${t('你')}</span>` : ''}</summary>
       ${!full ? `<div class="muted" style="margin-top:8px">${t('其他成員的設定要由本人或第一位成員來改。')}</div>` : `<dl class="kv">
+        <dt>${t('頭貼')}</dt><dd class="avrow"><button type="button" class="avbtn" onclick="pickAvatar(${p.id})" title="${t('換頭貼')}">${face(p, 'lg')}<span>${t('換頭貼')}</span></button>
+          ${p.avatar ? `<button type="button" class="btn ghost" onclick="api('/profiles/${p.id}/avatar','DELETE').then(loadP).then(render)">${t('移除')}</button>` : ''}</dd>
         <dt>${t('名字')}</dt><dd><input class="field" value="${esc(p.name)}" maxlength="20" style="max-width:180px" onchange="${patch('{name:this.value}')}"></dd>
         <dt>${t('起床方式')}</dt><dd>${pick('alarm_mode', [['app', '手機 App 鬧鐘'], ['notify', '用推播叫'], ['off', '不需要']])}</dd>
         <dt>${t('行程提醒')}</dt><dd><input class="field num" type="number" min="0" max="720" value="${p.remind_minutes}" style="width:76px" onchange="${patch('{remind_minutes:+this.value}')}"> <span class="muted">${t('分鐘前推播（0 = 不提醒）')}</span></dd>

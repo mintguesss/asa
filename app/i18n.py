@@ -103,6 +103,7 @@ EN = {
     "只有第一位成員或這台電腦可以管理成員": "Only the first member, or a browser on the server itself, can manage members",
     "只能改自己的設定": "You can only change your own settings",
     "設定值不正確": "Invalid value",
+    "圖片格式不支援或太大": "Unsupported or too large image",
     "第一位成員不能移除": "The first member cannot be removed",
     "其他裝置要用那位成員自己的存取碼": "Other devices must use that member's own access code",
     "停班停課（自動偵測）": "Closure (detected automatically)",
