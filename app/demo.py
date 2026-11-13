@@ -98,6 +98,22 @@ def seed() -> None:
         db.insert("tasks", {"title": L("訂週末餐廳", "Book a restaurant for the weekend"), "scope": "day",
                             "plan_date": day(0), "shared": 1})
         db.insert("tasks", {"title": L("寄生日卡給阿嬤", "Send grandma a birthday card"), "scope": "day", "plan_date": day(0)})
+        brunch = db.one("SELECT id FROM events WHERE start LIKE ?", (f"{day(1)}%",))["id"]
+        movie = db.one("SELECT id FROM events WHERE start LIKE ?", (f"{day(3)}%",))["id"]
+        for who, text, ago in [(other["id"], L("我先去排隊，你 10:20 到就好", "I'll queue first, just come by 10:20"), "-50 minutes"),
+                               (1, L("好！要幫你點拿鐵嗎？", "Sure! Want me to get you a latte?"), "-40 minutes"),
+                               (other["id"], L("要～少冰", "Yes please, less ice"), "-35 minutes")]:
+            db.run("INSERT INTO comments (event_id, author, body, created) VALUES (?,?,?,datetime('now','localtime',?))",
+                   (brunch, who, text, ago))
+    with db.as_profile(1):
+        for actor, action, title, owner, ref, body, ago in [
+                (other["id"], "event_add", L("看電影", "Movie night"), other["id"], movie, "", "-3 hours"),
+                (other["id"], "event_add", L("一起吃早午餐", "Brunch together"), other["id"], brunch, "", "-2 hours"),
+                (other["id"], "comment", L("一起吃早午餐", "Brunch together"), other["id"], brunch, L("我先去排隊，你 10:20 到就好", "I'll queue first, just come by 10:20"), "-50 minutes"),
+                (1, "comment", L("一起吃早午餐", "Brunch together"), other["id"], brunch, L("好！要幫你點拿鐵嗎？", "Sure! Want me to get you a latte?"), "-40 minutes"),
+                (other["id"], "comment", L("一起吃早午餐", "Brunch together"), other["id"], brunch, L("要～少冰", "Yes please, less ice"), "-35 minutes")]:
+            db.run("INSERT INTO activity (actor, action, title, owner, ref_id, body, created) VALUES (?,?,?,?,?,?,datetime('now','localtime',?))",
+                   (actor, action, title, owner, ref, body, ago))
 
     for n in range(0, 14):
         core.regenerate_plan(day(n))

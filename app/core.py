@@ -1,7 +1,7 @@
 """核心邏輯：某天的行程、鬧鐘排程、每日簡報文字。"""
 from datetime import date, datetime, timedelta
 
-from . import db, profiles
+from . import db, profiles, social
 from .i18n import tr, wd as wd_name
 
 WD = "一二三四五六日"
@@ -10,9 +10,11 @@ WD = "一二三四五六日"
 def events_on(d: str) -> list[dict]:
     """某天的所有行程 = 單次行程 + 每週固定行程（放假日不算），依開始時間排序。"""
     out = db.rows("SELECT * FROM events WHERE substr(start,1,10) = ?", (d,))
+    cc = social.comment_counts([e["id"] for e in out])
     for e in out:
         e["time"] = e["start"][11:16]
         e["end_time"] = (e["end"] or "")[11:16]
+        e["comments"] = cc.get(e["id"], 0)
     if not db.one("SELECT 1 FROM skip_dates WHERE date = ?", (d,)):
         wd = date.fromisoformat(d).weekday()
         for w in db.rows("SELECT * FROM weekly_events WHERE weekday = ?", (wd,)):
@@ -23,9 +25,11 @@ def events_on(d: str) -> list[dict]:
             })
     for p in profiles.others():                 # 其他成員標成「一起的」行程
         with db.as_profile(p["id"]):
-            for e in db.rows("SELECT * FROM events WHERE substr(start,1,10) = ? AND shared = 1", (d,)):
+            theirs = db.rows("SELECT * FROM events WHERE substr(start,1,10) = ? AND shared = 1", (d,))
+            cc = social.comment_counts([e["id"] for e in theirs])
+            for e in theirs:
                 e |= {"time": e["start"][11:16], "end_time": (e["end"] or "")[11:16],
-                      "owner": p["id"], "owner_name": p["name"]}
+                      "owner": p["id"], "owner_name": p["name"], "comments": cc.get(e["id"], 0)}
                 out.append(e)
     return sorted(out, key=lambda e: e["time"])
 

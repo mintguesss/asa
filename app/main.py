@@ -17,7 +17,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import closures, core, db, demo, i18n, insights, notify, profiles, quick, sources
+from . import closures, core, db, demo, i18n, insights, notify, profiles, quick, social, sources
 from .i18n import tr
 
 ROOT = Path(__file__).resolve().parent
@@ -349,6 +349,8 @@ def add_event(body: dict = Body(...)):
     if "shared" in data:
         data["shared"] = flag(data["shared"])
     id_ = db.insert("events", data)
+    if data.get("shared"):
+        social.log("event_add", data.get("title", ""), db.me(), id_, push=True)
     refresh_tomorrow()
     return {"id": id_}
 
@@ -356,9 +358,70 @@ def add_event(body: dict = Body(...)):
 @app.delete("/api/events/{id_}")
 def del_event(id_: int, owner: int | None = None):
     with owned(owner, "events", id_):
+        ev = db.one("SELECT * FROM events WHERE id = ?", (id_,))
         db.run("DELETE FROM events WHERE id = ?", (id_,))
+        db.run("DELETE FROM comments WHERE event_id = ?", (id_,))
+    if ev and ev.get("shared"):
+        social.log("event_del", ev["title"], owner or db.me(), None)
     refresh_tomorrow()
     return {"ok": True}
+
+
+@app.get("/api/events/{id_}")
+def get_event(id_: int, owner: int | None = None):
+    """單一行程和它的留言。別人的行程只看得到一起的。"""
+    me = db.me()
+    who = owner or me
+    if who != me and not profiles.get(who):
+        raise HTTPException(404, tr("沒有這位成員"))
+    with db.as_profile(who):
+        ev = db.one("SELECT * FROM events WHERE id = ?", (id_,))
+        if not ev or (who != me and not ev["shared"]):
+            raise HTTPException(404, tr("找不到這個行程"))
+        out = ev | {"owner": who, "owner_name": (profiles.get(who) or {}).get("name", ""), "mine": who == me,
+                    "comments": social.comments(id_)}
+    return out
+
+
+@app.post("/api/events/{id_}/comments")
+def add_comment(id_: int, body: dict = Body(...), owner: int | None = None):
+    text = str(body.get("body", "")).strip()[:1000]
+    if not text:
+        raise HTTPException(400, tr("留言是空的"))
+    who = owner or db.me()
+    me = db.me()
+    with owned(owner, "events", id_):
+        ev = db.one("SELECT * FROM events WHERE id = ?", (id_,))
+        if not ev:
+            raise HTTPException(404, tr("找不到這個行程"))
+        cid = db.insert("comments", {"event_id": id_, "author": me, "body": text})
+    if ev.get("shared"):
+        social.log("comment", ev["title"], who, id_, text, push=True)
+    return {"id": cid}
+
+
+@app.delete("/api/events/{id_}/comments/{cid}")
+def del_comment(id_: int, cid: int, owner: int | None = None):
+    me = db.me()
+    with owned(owner, "events", id_):
+        c = db.one("SELECT * FROM comments WHERE id = ? AND event_id = ?", (cid, id_))
+        if not c or c["author"] != me:
+            raise HTTPException(403, tr("只能刪自己的留言"))
+        db.run("DELETE FROM comments WHERE id = ?", (cid,))
+    return {"ok": True}
+
+
+@app.get("/api/activity")
+def activity():
+    items = social.feed()
+    unread, seen = social.unread(), int(db.kv_get("activity_seen", "0") or 0)
+    social.mark_seen()
+    return {"items": items, "unread": unread, "seen": seen}
+
+
+@app.get("/api/activity/unread")
+def activity_unread():
+    return {"n": social.unread() if profiles.multi() else 0}
 
 
 @app.get("/api/weekly")
@@ -414,7 +477,10 @@ def add_task(body: dict = Body(...)):
         data["shared"] = flag(data["shared"])
     if data["scope"] == "week":
         data["plan_date"] = core.week_monday(data["plan_date"])
-    return {"id": db.insert("tasks", data)}
+    id_ = db.insert("tasks", data)
+    if data.get("shared"):
+        social.log("task_add", data.get("title", ""), db.me(), id_)
+    return {"id": id_}
 
 
 @app.patch("/api/tasks/{id_}")
@@ -426,6 +492,9 @@ def edit_task(id_: int, body: dict = Body(...), owner: int | None = None):
         data["shared"] = flag(data["shared"])
     with owned(owner, "tasks", id_):
         db.update("tasks", id_, data)
+        t = db.one("SELECT * FROM tasks WHERE id = ?", (id_,))
+    if t and t.get("shared") and data.get("done"):
+        social.log("task_done", t["title"], owner or db.me(), id_)
     return {"ok": True}
 
 

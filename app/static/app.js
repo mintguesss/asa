@@ -18,7 +18,7 @@ const flagText = e => e.title.replace('⏰ 截止：', t('截止') + ' ');
 const S = {view: 'day', cal: 'day', date: TODAY(), inbox: 0};
 S.view = S.cal = ['day', 'week', 'month'].includes(store.get('cal2')) ? store.get('cal2') : 'month';
 if (['day', 'week', 'month'].includes(QS.get('view'))) S.view = S.cal = QS.get('view');
-else if (['tasks', 'inbox', 'alarms', 'weekly', 'link'].includes(QS.get('view'))) S.view = QS.get('view');
+else if (['tasks', 'inbox', 'alarms', 'weekly', 'link', 'activity'].includes(QS.get('view'))) S.view = QS.get('view');
 if (/^\d{4}-\d{2}-\d{2}$/.test(QS.get('date') || '')) S.date = QS.get('date');
 
 async function api(path, method = 'GET', body) {
@@ -151,6 +151,8 @@ async function render() {
   const y = window.scrollY;
   const html = await VIEW[S.view]();
   S.inbox = (await api('/inbox')).length;
+  const ab = $('#actbtn'); ab.hidden = !P.multi;
+  if (P.multi) { const u = S.view === 'activity' ? 0 : (await api('/activity/unread')).n; ab.querySelector('.dot').hidden = !u; ab.querySelector('.dot').textContent = u; ab.classList.toggle('on', S.view === 'activity'); }
   drawRail();
   $('#view').innerHTML = html;
   decorate();
@@ -184,9 +186,9 @@ function timeline(events, {start, end, pxm = 0.8, alarms = [], now = null, compa
   const n = Math.max(1, lanes.length);
   for (const b of blocks) {
     const height = Math.max(compact ? 20 : 30, (b.e - b.s) * pxm - 3);
-    h += `<div class="ev ${b.source === 'weekly' ? 'weekly' : ''}" style="top:${top(b.s)}px;height:${height}px;left:calc(${b.lane * 100 / n}% + 2px);width:calc(${100 / n}% - 4px)" title="${esc(b.time)} ${esc(b.title)}">
-      <b>${duo(b)}${esc(b.title)}</b>${compact ? '' : `<span class="num">${esc(b.time)}${b.end_time ? '–' + esc(b.end_time) : ''}</span>${b.location ? ' · ' + esc(b.location) : ''}${b.source === 'weekly' ? ' · ' + t('每週') : ''}`}
-      ${b.id && !compact ? `<button class="x" onclick="act('/${b.source === 'tt' ? 'weekly' : 'events'}/${b.id}${own(b)}','DELETE')">✕</button>` : ''}</div>`;
+    h += `<div class="ev ${b.source === 'weekly' ? 'weekly' : ''} ${b.id && b.source !== 'tt' ? 'open' : ''}" ${b.id && b.source !== 'tt' ? `onclick="openEvent(${b.id},${b.owner || 0})"` : ''} style="top:${top(b.s)}px;height:${height}px;left:calc(${b.lane * 100 / n}% + 2px);width:calc(${100 / n}% - 4px)" title="${esc(b.time)} ${esc(b.title)}">
+      <b>${duo(b)}${esc(b.title)}${b.comments ? ` <span class="cc">${BUBBLE}${b.comments}</span>` : ''}</b>${compact ? '' : `<span class="num">${esc(b.time)}${b.end_time ? '–' + esc(b.end_time) : ''}</span>${b.location ? ' · ' + esc(b.location) : ''}${b.source === 'weekly' ? ' · ' + t('每週') : ''}`}
+      ${b.id && !compact ? `<button class="x" onclick="event.stopPropagation();act('/${b.source === 'tt' ? 'weekly' : 'events'}/${b.id}${own(b)}','DELETE')">✕</button>` : ''}</div>`;
   }
   for (const e of events.filter(isDeadline))
     h += `<div class="flag" style="top:${top(Math.min(mins(e.time), end))}px"><span>${esc(flagText(e))}</span></div>`;
@@ -206,8 +208,8 @@ function agenda(events, {del = false, now = null} = {}) {
   if (!events.length) return `<div class="empty">${t('沒有行程')}</div>`;
   return `<div class="agenda">${events.map(e => isDeadline(e)
     ? `<div class="ag due"><i class="num">${esc(e.time)}</i><b>${esc(flagText(e))}</b></div>`
-    : `<div class="ag ${e.source === 'weekly' ? 'weekly' : ''} ${now !== null && (e.end_time ? mins(e.end_time) : mins(e.time) + 50) < now ? 'past' : ''}"><i class="num">${esc(e.time)}${e.end_time ? `<s>${esc(e.end_time)}</s>` : ''}</i>
-        <b>${duo(e)}${esc(e.title)}${e.location ? `<em>${esc(e.location)}</em>` : ''}</b>${del && e.id ? `<button class="x" onclick="act('/events/${e.id}${own(e)}','DELETE')">✕</button>` : ''}</div>`).join('')}</div>`;
+    : `<div class="ag ${e.source === 'weekly' ? 'weekly' : ''} ${e.id ? 'open' : ''} ${now !== null && (e.end_time ? mins(e.end_time) : mins(e.time) + 50) < now ? 'past' : ''}" ${e.id ? `onclick="openEvent(${e.id},${e.owner || 0})"` : ''}><i class="num">${esc(e.time)}${e.end_time ? `<s>${esc(e.end_time)}</s>` : ''}</i>
+        <b>${duo(e)}${esc(e.title)}${e.location ? `<em>${esc(e.location)}</em>` : ''}</b>${e.comments ? `<span class="cc">${BUBBLE}${e.comments}</span>` : ''}${del && e.id ? `<button class="x" onclick="event.stopPropagation();act('/events/${e.id}${own(e)}','DELETE')">✕</button>` : ''}</div>`).join('')}</div>`;
 }
 
 /* ---------- 色系：日曆跟著時段，其他每頁一個顏色 ---------- */
@@ -456,6 +458,60 @@ VIEW.tasks = async () => {
   };
   return `${taskForm()}<div class="tgrid">${['逾期', '今天', '本週', '之後'].map(k => group(k, G[k])).join('')}</div>`;
 };
+/* ---------- 行程詳情：時間地點、留言 ---------- */
+const BUBBLE = '<svg class="bub" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v10H9l-5 4z"/></svg>';
+const whenText = ts => { const d = ts.slice(0, 10), hm = ts.slice(11, 16); return d === TODAY() ? hm : `${md(d)} ${hm}`; };
+async function openEvent(id, owner) {
+  const q = owner ? `?owner=${owner}` : '';
+  const e = await api(`/events/${id}${q}`);
+  let box = document.querySelector('.sheetwrap');
+  if (!box) {
+    box = document.createElement('div'); box.className = 'ask sheetwrap';
+    box.onclick = ev => { if (ev.target === box) closeSheet(); };
+    document.body.append(box);
+    document.addEventListener('keydown', sheetKey);
+  }
+  const d = e.start.slice(0, 10);
+  box.innerHTML = `<div class="askbox sheet" role="dialog" aria-modal="true">
+    <div class="sh-h"><b>${duo(e)}${esc(e.title)}</b><button class="x" onclick="closeSheet()" aria-label="${t('關閉')}">✕</button></div>
+    <div class="sh-m">${md(d)} ${WDN[wdOf(d)]} · <span class="num">${esc(e.start.slice(11, 16))}${e.end ? '–' + esc(e.end.slice(11, 16)) : ''}</span>${e.location ? ' · ' + esc(e.location) : ''}${P.multi && !e.mine ? ' · ' + esc(e.owner_name) : ''}</div>
+    ${e.note ? `<div class="sh-n">${esc(e.note)}</div>` : ''}
+    <div class="cmts">${e.comments.map(c => `<div class="cm">${face({name: c.author_name, color: c.author_color, avatar: c.avatar}, 'sm')}<div class="cb">
+        <div class="ch"><b>${esc(c.author_name)}</b><span class="muted num">${whenText(c.created)}</span>${c.author === P.me.id ? `<button class="x" onclick="delComment(${id},${owner},${c.id})" aria-label="${t('刪除')}">✕</button>` : ''}</div>
+        <div class="ct">${esc(c.body)}</div></div></div>`).join('') || `<div class="empty">${P.multi && e.shared ? t('還沒有留言，問問「幾點？」「在哪？」') : t('可以在這裡記一點備註')}</div>`}</div>
+    <form class="cform" onsubmit="event.preventDefault();sendComment(this,${id},${owner})"><input class="field" name="body" placeholder="${t('留言…')}" autocomplete="off" required maxlength="1000"><button class="btn pri">${t('送出')}</button></form></div>`;
+  const list = box.querySelector('.cmts'); list.scrollTop = list.scrollHeight;
+}
+const sheetKey = e => { if (e.key === 'Escape') closeSheet(); };
+function closeSheet() {
+  const box = document.querySelector('.sheetwrap'); if (!box) return;
+  document.removeEventListener('keydown', sheetKey);
+  box.classList.add('out'); setTimeout(() => box.remove(), 180); render();
+}
+async function sendComment(f, id, owner) {
+  const body = f.body.value.trim(); if (!body) return;
+  f.querySelector('button').disabled = true;
+  await api(`/events/${id}/comments${owner ? '?owner=' + owner : ''}`, 'POST', {body});
+  openEvent(id, owner);
+}
+async function delComment(id, owner, cid) {
+  if (!await ask(t('刪除這則留言？'))) return;
+  await api(`/events/${id}/comments/${cid}${owner ? '?owner=' + owner : ''}`, 'DELETE'); openEvent(id, owner);
+}
+
+/* ---------- 動態：其他成員新增了什麼、留了什麼言 ---------- */
+const ACT = {event_add: '新增了一起的行程', event_del: '刪除了一起的行程', task_add: '新增了共用待辦', task_done: '完成了共用待辦', comment: '留言'};
+VIEW.activity = async () => {
+  const r = await api('/activity');
+  const row = (a, i) => `<div class="av ${a.id > r.seen && !a.mine ? 'new' : ''} ${a.ref_id && (a.action === 'comment' || a.action === 'event_add') ? 'open' : ''}"
+      ${a.ref_id && (a.action === 'comment' || a.action === 'event_add') ? `onclick="openEvent(${a.ref_id},${a.owner === P.me.id ? 0 : a.owner})"` : ''}>
+    ${face({name: a.actor_name, color: a.actor_color, avatar: a.avatar}, 'md')}
+    <div class="avb"><div><b>${a.mine ? t('你') : esc(a.actor_name)}</b> ${t(ACT[a.action] || a.action)}<span class="avt">「${esc(a.title)}」</span></div>
+      ${a.body ? `<div class="avq">${esc(a.body)}</div>` : ''}<div class="muted num avtime">${whenText(a.created)}</div></div></div>`;
+  return `<div class="card actlist"><h3>${t('動態')}${r.unread ? `<span class="cnt hot">${r.unread}</span>` : ''}</h3>
+    ${r.items.map(row).join('') || `<div class="empty">${t('還沒有動態。新增「一起」的行程或在行程裡留言，就會出現在這裡。')}</div>`}</div>`;
+};
+
 /* 新增待辦：上面打字，下面點選什麼時候做 */
 function taskForm() {
   return `<form class="card tadd" onsubmit="event.preventDefault();addTask(this)">

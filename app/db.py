@@ -98,6 +98,23 @@ CREATE TABLE IF NOT EXISTS alarm_log (       -- 手機回報，之後用來學�
     action TEXT NOT NULL,           -- fired / dismissed / snoozed / awake
     ts TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS comments (        -- 行程留言（存在行程主人的資料庫）
+    id INTEGER PRIMARY KEY,
+    event_id INTEGER NOT NULL,
+    author INTEGER NOT NULL,        -- 成員 id
+    body TEXT NOT NULL,
+    created TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS activity (        -- 動態（只用第一位成員資料庫裡的這張）
+    id INTEGER PRIMARY KEY,
+    actor INTEGER NOT NULL,
+    action TEXT NOT NULL,           -- event_add / event_del / task_add / task_done / comment
+    title TEXT,
+    owner INTEGER,                  -- 那一筆屬於誰（點進去時用）
+    ref_id INTEGER,
+    body TEXT DEFAULT '',
+    created TEXT DEFAULT (datetime('now','localtime'))
+);
 CREATE TABLE IF NOT EXISTS profiles (        -- 成員名單（只用第一位成員資料庫裡的這張）
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
