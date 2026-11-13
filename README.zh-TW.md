@@ -2,6 +2,12 @@
 
 **會自己排的鬧鐘。** 每天晚上依照明天的行程，自動幫你設好一整組起床鬧鐘：第一個行程早就早響，放假就不響。內建行事曆、每日／每週待辦，以及從其他系統抓資料、審核後才進來的收件匣。
 
+![日檢視](docs/zh-day-dark.png)
+
+| 月檢視（亮色） | 待辦（淺紫） | 手機 |
+|---|---|---|
+| ![月檢視](docs/zh-month-light.png) | ![待辦](docs/zh-tasks-lilac.png) | ![手機版](docs/mobile.png) |
+
 ## 啟動
 
 需要 Python 3.11 以上。
@@ -16,6 +22,10 @@
 - 第一次啟動時 Windows 防火牆會問要不要允許 Python 連線，要允許手機才連得到。
 - 不要把這個埠直接開到公開網路，用區網或 Tailscale 這類私人網路。
 
+**先用範例資料試玩**：啟動前設 `ASA_DEMO=1`（Windows：`set ASA_DEMO=1 && run.bat`；macOS / Linux：`ASA_DEMO=1 ./run.sh`）。會用獨立的 `data/demo.db`，不會動到你的資料，也不會發通知。
+
+**Docker**：`cp .env.example .env` 之後 `docker compose up -d`，時區在 `docker-compose.yml` 裡改；開 `http://localhost:8787/?token=<.env 裡的 PHONE_TOKEN>`。（Docker 映像檔還沒實際建置驗證過。）
+
 ## 網頁版
 
 | 頁面 | 用途 |
@@ -27,7 +37,9 @@
 | 固定行程 | 每週重複的行程（課表、班表、健身…） |
 | 設定 | 手機連線資訊、資料來源、通知管道的狀態 |
 
-右上角可以切換中文／英文和亮色／暗色。每一頁有自己的色系，日曆頁的顏色會跟著時段變。
+右上角切換亮色／暗色；語言和色系在「設定 → 外觀」：21 種色系可以固定一種、每頁自動搭配，或隨機。
+
+每一頁都能直接連結，也能用網址參數暫時指定外觀：`/?view=week&theme=light&lang=en&pal=lilac&date=2026-01-31`。
 
 最上面的指令列（`Ctrl+K`）可以直接打一句話：
 
@@ -47,14 +59,17 @@
 App 每 30 分鐘同步一次，鬧鐘存在手機上，電腦關機或沒網路時照樣會響。
 響鈴畫面有兩顆按鈕：「只關掉這一個」，和要答對算術才能按的「我醒了」（會取消接下來 3 小時的鬧鐘，並回報起床時間）。
 
+App 介面跟著手機語言：中文顯示中文，其他語言顯示英文。
+
 > App 的程式碼還沒有實際編譯驗證過。
 
 ## 資料來源
 
 抓到的東西一律先進「審核」，核准後才會變成待辦或行程。
 
-- **iCalendar 訂閱**：`.env` 的 `ICS_EVENT_URLS`（核准後變行程）和 `ICS_DEADLINE_URLS`（核准後變有截止時間的待辦）。Google 日曆、Outlook、Moodle、Canvas 都能匯出這種網址。重複事件目前只取第一次。
+- **iCalendar 訂閱**：`.env` 的 `ICS_EVENT_URLS`（核准後變行程）和 `ICS_DEADLINE_URLS`（核准後變有截止時間的待辦）。Google 日曆、Outlook、Moodle、Canvas 都能匯出這種網址。重複事件會自動展開（預設只展開未來 14 天，`ICS_REPEAT_DAYS_AHEAD` 可調）。
 - **eeClass**：填 `EECLASS_URL`（你學校的 eeClass 網址）、`EECLASS_ACCOUNT`、`EECLASS_PASSWORD`。這個來源還沒用真實帳號驗證過，請先執行 `python -m app.sources.eeclass --debug` 看抓到什麼。
+- **不想每筆都審核**：`AUTO_APPROVE=ics`（或 `ics,eeclass`）會讓那個來源的新項目直接加進行事曆／待辦，公告仍然要審核。
 - **其他系統**：直接 `POST /api/inbox`，或在 `app/sources/` 加一個模組（格式寫在 `app/sources/__init__.py`）。
 
 ## 通知

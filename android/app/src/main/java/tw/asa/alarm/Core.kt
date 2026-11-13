@@ -37,7 +37,7 @@ object Store {
         val out = ArrayList<AlarmItem>()
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
-            out.add(AlarmItem(o.getString("date"), o.getString("time"), o.optString("label", "起床")))
+            out.add(AlarmItem(o.getString("date"), o.getString("time"), o.optString("label", tr("起床", "Wake up"))))
         }
         return out.sortedBy { it.millis }
     }
@@ -48,7 +48,7 @@ object Store {
         p(c).edit().putString("alarms", arr.toString()).apply()
     }
 
-    fun status(c: Context): String = p(c).getString("status", "還沒同步過") ?: ""
+    fun status(c: Context): String = p(c).getString("status", tr("還沒同步過", "Never synced")) ?: ""
     fun setStatus(c: Context, s: String) { p(c).edit().putString("status", s).apply() }
 
     /** 按下「我醒了」之後，這個時間點之前的鬧鐘都不再響。 */
@@ -59,7 +59,7 @@ object Store {
 object Api {
     private fun open(c: Context, path: String): HttpURLConnection {
         val base = Store.url(c)
-        if (base.isEmpty()) throw IllegalStateException("尚未設定伺服器網址")
+        if (base.isEmpty()) throw IllegalStateException(tr("尚未設定伺服器網址", "Server URL is not set"))
         val conn = URL(base + path).openConnection() as HttpURLConnection
         conn.connectTimeout = 8000
         conn.readTimeout = 8000
@@ -71,7 +71,7 @@ object Api {
         val conn = open(c, path)
         try {
             val code = conn.responseCode
-            if (code != 200) throw IllegalStateException(if (code == 401) "存取碼錯誤" else "伺服器回應 $code")
+            if (code != 200) throw IllegalStateException(if (code == 401) tr("存取碼錯誤", "Wrong access code") else tr("伺服器回應 $code", "Server responded $code"))
             return conn.inputStream.bufferedReader().use { it.readText() }
         } finally {
             conn.disconnect()
@@ -155,16 +155,16 @@ object Scheduler {
             val fresh = ArrayList<AlarmItem>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                fresh.add(AlarmItem(o.getString("date"), o.getString("time"), o.optString("label", "起床")))
+                fresh.add(AlarmItem(o.getString("date"), o.getString("time"), o.optString("label", tr("起床", "Wake up"))))
             }
             val keys = fresh.map { it.key }.toSet()
             for (old in Store.alarms(c)) if (old.key !in keys) cancel(c, old)
             Store.setAlarms(c, fresh)
             scheduleAll(c)
-            "已同步 $stamp，接下來有 ${upcoming(c).size} 個鬧鐘"
+            tr("已同步 $stamp，接下來有 ${upcoming(c).size} 個鬧鐘", "Synced $stamp, ${upcoming(c).size} alarms ahead")
         } catch (e: Exception) {
             scheduleAll(c)
-            "同步失敗 $stamp：${e.message ?: e.javaClass.simpleName}（沿用上次的鬧鐘）"
+            tr("同步失敗 $stamp：${e.message ?: e.javaClass.simpleName}（沿用上次的鬧鐘）", "Sync failed $stamp: ${e.message ?: e.javaClass.simpleName} (keeping the last alarms)")
         }
         Store.setStatus(c, msg)
         return msg
@@ -188,7 +188,7 @@ object Scheduler {
     /** 幾秒後響一個測試鬧鐘。 */
     fun testAlarm(c: Context, seconds: Int) {
         val now = LocalDateTime.now()
-        val item = AlarmItem(now.toLocalDate().toString(), now.format(DateTimeFormatter.ofPattern("HH:mm")), "測試鬧鐘")
+        val item = AlarmItem(now.toLocalDate().toString(), now.format(DateTimeFormatter.ofPattern("HH:mm")), tr("測試鬧鐘", "Test alarm"))
         val i = Intent(c, AlarmReceiver::class.java)
             .setAction(ACTION_FIRE)
             .setData(Uri.parse("asa://test"))

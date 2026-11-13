@@ -14,7 +14,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import core, db, i18n, insights, notify, quick, sources
+from . import core, db, demo, i18n, insights, notify, quick, sources
 from .i18n import tr
 
 ROOT = Path(__file__).resolve().parent
@@ -26,6 +26,13 @@ if not os.getenv("PHONE_TOKEN", "").strip():
     with ENV.open("a", encoding="utf-8") as _f:
         _f.write(f"\nPHONE_TOKEN={_tok}\n")
     os.environ["PHONE_TOKEN"] = _tok
+
+DEMO = os.getenv("ASA_DEMO", "").strip().lower() not in ("", "0", "false", "no")
+if DEMO:
+    # 示範模式：用獨立的資料庫，每次啟動重建（見 demo.py）
+    db.DB_PATH = db.DB_PATH.with_name("demo.db")
+    for _suffix in ("", "-wal", "-shm"):
+        db.DB_PATH.with_name("demo.db" + _suffix).unlink(missing_ok=True)
 
 
 def today() -> str:
@@ -64,8 +71,19 @@ def inbox_add(data: dict, silent: bool = False) -> int | None:
     if not silent:
         due = "\n" + tr("⏰ 截止 {due}", due=data["due"].replace("T", " ")) if data.get("due") else ""
         notify.send(tr("📥 待審核：[{tag}] {title}", tag=data.get("course") or data["kind"], title=data["title"])
-                    + f"{due}\n{data.get('link', '')}")
+                    + f"{due}\n{data.get('link', '')}".rstrip() + "\n" + review_link())
     return id_
+
+
+def review_link() -> str:
+    """審核頁的網址，附在推播裡，點了就能核准。"""
+    urls = server_urls()
+    return tr("👉 審核：{url}", url=urls[0] + "/?view=inbox") if urls else ""
+
+
+def auto_approve(name: str) -> bool:
+    """.env 的 AUTO_APPROVE=ics,eeclass：這些來源的新項目不用審核，直接加進行事曆／待辦。"""
+    return name in {x.strip().lower() for x in os.getenv("AUTO_APPROVE", "").split(",")}
 
 
 def job_source(name: str) -> dict:
@@ -82,21 +100,29 @@ def job_source(name: str) -> dict:
         db.kv_set(f"src_{name}_last", tr("{now} 失敗：{err}", now=now, err=e))
         return {"ok": False, "message": str(e)}
     first = db.kv_get(f"src_{name}_seeded") is None
+    auto = auto_approve(name)
     new = []
     for it in items:
         old = (it.get("due") and it["due"] < now) or (first and not it.get("due"))
         id_ = inbox_add(pick(it, INBOX_F), silent=True)
         if id_ and old:
             db.update("inbox", id_, {"status": "rejected"})
+        elif id_ and auto and it.get("kind") != "announcement":
+            approve_inbox(id_, {})
+            new.append(it)
         elif id_:
             new.append(it)
     db.kv_set(f"src_{name}_seeded", "1")
-    db.kv_set(f"src_{name}_last", tr("{now} 成功：共 {total} 筆，新增 {new} 筆待審核", now=now, total=len(items), new=len(new)))
+    db.kv_set(f"src_{name}_last", tr("{now} 成功：共 {total} 筆，新增 {new} 筆待審核", now=now, total=len(items), new=len(new))
+              if not auto else tr("{now} 成功：共 {total} 筆，自動加入 {new} 筆", now=now, total=len(items), new=len(new)))
     if new:
-        lines = [tr("📥 {label} 有 {n} 則新項目待審核", label=tr(mod.LABEL), n=len(new))]
+        lines = [tr("📥 {label} 有 {n} 則新項目待審核", label=tr(mod.LABEL), n=len(new)) if not auto
+                 else tr("✅ {label} 自動加入 {n} 則新項目", label=tr(mod.LABEL), n=len(new))]
         lines += [f"  {'[' + i['course'] + '] ' if i.get('course') else ''}{i['title']}"
                   + (f"（{i['due'][5:].replace('T', ' ')}）" if i.get("due") else "") for i in new[:10]]
-        notify.send("\n".join(lines))
+        if not auto:
+            lines.append(review_link())
+        notify.send("\n".join(lines).rstrip())
     return {"ok": True, "total": len(items), "new": len(new)}
 
 
@@ -119,6 +145,10 @@ async def lifespan(_: FastAPI):
                                   "lead_minutes": 90, "count": 8, "interval_minutes": 5})
         db.insert("alarm_rules", {"name": tr("週末"), "weekdays": "5,6", "anchor": "first_event",
                                   "lead_minutes": 90, "count": 4, "interval_minutes": 10})
+    if DEMO:
+        demo.seed()
+        yield
+        return
     if not core.plan(tomorrow()):
         core.regenerate_plan(tomorrow())
     sched = BackgroundScheduler()
@@ -136,6 +166,15 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Asa", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+
+
+@app.middleware("http")
+async def fresh_static(request: Request, call_next):
+    """網頁檔案每次都跟伺服器確認有沒有更新，升級後不會卡在瀏覽器的舊版。"""
+    resp = await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 @app.middleware("http")
@@ -404,7 +443,7 @@ def phone_alarms():
     out += [a for a in core.plan(tomorrow()) if a["enabled"]]
     db.kv_set("phone_last_sync", now.isoformat(timespec="minutes"))
     return {"server_time": now.isoformat(timespec="seconds"),
-            "alarms": [{"date": a["date"], "time": a["time"], "label": a["label"] or "起床"} for a in out]}
+            "alarms": [{"date": a["date"], "time": a["time"], "label": tr("起床") if a["label"] in ("", "起床") else a["label"]} for a in out]}
 
 
 @app.post("/api/phone/log")

@@ -55,12 +55,12 @@ class AlarmActivity : Activity() {
         val pad = Ui.dp(this, 28)
         root.setPadding(pad, Ui.dp(this, 90), pad, Ui.dp(this, 40))
 
-        root.addView(Ui.center(Ui.text(this, item?.label ?: "鬧鐘", 20f)))
+        root.addView(Ui.center(Ui.text(this, item?.label ?: tr("鬧鐘", "Alarm"), 20f)))
         clock = Ui.center(Ui.text(this, "", 96f, Ui.INK, true))
         root.addView(clock)
 
         val rest = Scheduler.upcoming(this).filter { it.millis <= System.currentTimeMillis() + 3 * 60 * 60 * 1000L }
-        val hint = if (rest.isEmpty()) "這是這一輪最後一個鬧鐘" else "後面還有 ${rest.size} 個，下一個 ${rest[0].time}"
+        val hint = if (rest.isEmpty()) tr("這是這一輪最後一個鬧鐘", "This is the last alarm of this round") else tr("後面還有 ${rest.size} 個，下一個 ${rest[0].time}", "${rest.size} more to go, next at ${rest[0].time}")
         root.addView(Ui.center(Ui.text(this, hint, 15f, 0xDDFFFFFF.toInt())))
 
         val spacer = LinearLayout(this)
@@ -70,7 +70,7 @@ class AlarmActivity : Activity() {
         // 「我醒了」要先答對算術，避免半夢半醒按掉
         val a = Random.nextInt(12, 60)
         val b = Random.nextInt(12, 40)
-        root.addView(Ui.center(Ui.text(this, "答對才算醒：$a + $b = ?", 17f)))
+        root.addView(Ui.center(Ui.text(this, tr("答對才算醒：$a + $b = ?", "Solve it to prove you're awake: $a + $b = ?"), 17f)))
         val answer = EditText(this)
         answer.inputType = InputType.TYPE_CLASS_NUMBER
         answer.gravity = Gravity.CENTER
@@ -82,19 +82,19 @@ class AlarmActivity : Activity() {
         answer.layoutParams = alp
         root.addView(answer)
 
-        root.addView(Ui.button(this, "我醒了（取消後面的鬧鐘）", true) {
+        root.addView(Ui.button(this, tr("我醒了（取消後面的鬧鐘）", "I'm awake (cancel the rest)"), true) {
             if (answer.text.toString().trim() == (a + b).toString()) {
                 val n = Scheduler.markAwake(this)
                 Api.log(this, "awake", item)
                 stopService(Intent(this, AlarmService::class.java))
-                Toast.makeText(this, "早安！已取消後面 $n 個鬧鐘", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, tr("早安！已取消後面 $n 個鬧鐘", "Good morning! Cancelled $n remaining alarms"), Toast.LENGTH_LONG).show()
                 finish()
             } else {
                 answer.setText("")
-                Toast.makeText(this, "答錯了，再算一次", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, tr("答錯了，再算一次", "Wrong answer, try again"), Toast.LENGTH_SHORT).show()
             }
         })
-        root.addView(Ui.button(this, "只關掉這一個", false) {
+        root.addView(Ui.button(this, tr("只關掉這一個", "Dismiss this one only"), false) {
             Api.log(this, "dismissed", item)
             stopService(Intent(this, AlarmService::class.java))
             finish()

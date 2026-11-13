@@ -1,0 +1,13 @@
+# First run:  cp .env.example .env  &&  docker compose up -d
+# Then open   http://localhost:8787/?token=<PHONE_TOKEN from .env>
+services:
+  asa:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      TZ: Asia/Taipei          # your time zone; alarm times are local times
+    volumes:
+      - ./data:/app/data       # database
+      - ./.env:/app/.env       # settings (the access code is written here on first start)

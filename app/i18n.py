@@ -92,6 +92,10 @@ EN = {
     "⏰ 截止 {due}": "⏰ Due {due}",
     "找不到待審核項目": "No such pending item",
     "需要存取碼：請在網址後面加上 ?token=你的存取碼": "Access code required: add ?token=YOUR_CODE to the URL",
+    "起床": "Wake up",
+    "👉 審核：{url}": "👉 Review: {url}",
+    "{now} 成功：共 {total} 筆，自動加入 {new} 筆": "{now} OK: {total} items, {new} added automatically",
+    "✅ {label} 自動加入 {n} 則新項目": "✅ {label}: {n} new items added automatically",
     "✅ Asa 通知測試成功": "✅ Asa notification test OK",
     "平日": "Weekdays", "週末": "Weekend",
     # 來源與通知的顯示名稱

@@ -1,8 +1,11 @@
 /* 介面文字。程式裡一律寫中文原文 t('今天')，語言是英文時查下面的 EN。
    要加其他語言：再加一個字典，並在 t() 裡多查一層。 */
+/* 網址參數可以暫時蓋過偏好設定，方便分享連結或截圖：
+   ?view=week&theme=light&lang=en&pal=lilac&date=2026-01-31 */
+const QS = new URLSearchParams(location.search);
 const store = {
-  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  get(k) { if (QS.has(k)) return QS.get(k); try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { QS.delete(k); try { localStorage.setItem(k, v); } catch (e) {} },
 };
 let LANG = store.get('lang') || ((navigator.language || 'zh').toLowerCase().startsWith('zh') ? 'zh' : 'en');
 document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-Hant';

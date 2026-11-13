@@ -4,6 +4,18 @@
 
 > English / 繁體中文 UI, light and dark themes. 中文說明：[README.zh-TW.md](README.zh-TW.md)
 
+![Day view with tomorrow's alarms](docs/day-dark.png)
+
+| Week view, light theme | To-dos | Alarm rules | Phone |
+|---|---|---|---|
+| ![Week view](docs/week-light.png) | ![To-dos](docs/tasks-lilac.png) | ![Alarm rules](docs/alarms.png) | ![Phone layout](docs/mobile.png) |
+
+**Try it with sample data** — no setup, your own data is untouched:
+
+```bash
+ASA_DEMO=1 ./run.sh        # Windows: set ASA_DEMO=1 && run.bat
+```
+
 ## Features
 
 - **Auto alarms** — rules like "weekdays: start 90 min before the first event, 8 alarms, 5 min apart". Re-planned whenever your schedule changes.
@@ -12,9 +24,10 @@
 - **Calendar** — day / week / month views, weekly recurring events, days off.
 - **To-dos** — per day and per week, deadlines shown on the calendar, a 14-day load chart.
 - **One-line input** (`Ctrl+K`) — `tomorrow 3pm meeting @room 5`, `report by fri`, `alarm tomorrow 7:30`, `every tue 9:10-12:00 calculus` (English or Chinese).
-- **Looks** — animated aurora background, a colour per page, light/dark toggle, phone-friendly layout.
+- **Looks** — animated aurora background, 21 colour palettes (one per page, pick one, or random), light/dark toggle, phone-friendly layout.
 - **Review inbox** — sources drop items in; nothing reaches your calendar until you approve it.
-  - iCalendar feeds (Google Calendar, Outlook, Moodle, Canvas, …)
+  - iCalendar feeds (Google Calendar, Outlook, Moodle, Canvas, …), including repeating events
+  - trust a source? `AUTO_APPROVE=ics` skips the review step for it
   - eeClass LMS (used by many universities in Taiwan)
   - anything else: `POST /api/inbox`, or write a ~30-line plugin in `app/sources/`
 - **Notifications** — Discord, LINE, Telegram, ntfy, or any webhook: evening preview, morning brief, new inbox items.
@@ -31,6 +44,17 @@ cp .env.example .env      # optional — everything works with an empty .env
 
 Open <http://localhost:8787>. The first start creates the virtualenv, the database (`data/asa.db`) and an access code for other devices (`PHONE_TOKEN` in `.env`).
 
+### Docker
+
+```bash
+cp .env.example .env
+docker compose up -d
+```
+
+Set your time zone in `docker-compose.yml` (alarm times are local times), then open `http://localhost:8787/?token=<PHONE_TOKEN from .env>`. Set `PUBLIC_URL` in `.env` so links in notifications and the phone setup page point at the host, not the container.
+
+### Access
+
 Requests from the same machine are trusted; every other device must send the access code (`?token=…` once in the browser, or the `X-Token` header). Don't expose the port to the public internet — use your LAN or a private network such as Tailscale.
 
 ## Android app
@@ -40,6 +64,8 @@ Source is in `android/` (Kotlin, no third-party dependencies, minSdk 26). Build 
 ## Configuration
 
 Everything lives in `.env` — see [.env.example](.env.example). Restart after changing it.
+
+Any page can be linked directly, and preferences can be overridden per link: `/?view=week&theme=light&lang=en&pal=lilac&date=2026-01-31` (`view`: day, week, month, tasks, inbox, alarms, weekly, link).
 
 ## Adding a source or a notification channel
 
@@ -53,7 +79,7 @@ FastAPI · SQLite · APScheduler · vanilla JS/CSS (no build step).
 
 ## Status
 
-Early. The eeClass source and the Android app have not been verified end-to-end yet, and the Android app is Chinese-only for now — issues and PRs welcome.
+Early. The eeClass source, the Android app (English / 中文) and the Docker image have not been verified end-to-end yet — issues and PRs welcome.
 
 ## Credits
 

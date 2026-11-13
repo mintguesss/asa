@@ -49,13 +49,13 @@ class AlarmService : Service() {
         val item = AlarmItem(
             intent?.getStringExtra("date") ?: "",
             intent?.getStringExtra("time") ?: "",
-            intent?.getStringExtra("label") ?: "起床"
+            intent?.getStringExtra("label") ?: tr("起床", "Wake up")
         )
         current = item
         val isTest = intent?.getBooleanExtra("test", false) ?: false
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channel = NotificationChannel(CHANNEL, "鬧鐘", NotificationManager.IMPORTANCE_HIGH)
+        val channel = NotificationChannel(CHANNEL, tr("鬧鐘", "Alarm"), NotificationManager.IMPORTANCE_HIGH)
         channel.setSound(null, null)
         channel.enableVibration(false)
         channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
@@ -70,7 +70,7 @@ class AlarmService : Service() {
         val notification = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_bell)
             .setContentTitle(item.time + "  " + item.label)
-            .setContentText("點一下關閉鬧鐘")
+            .setContentText(tr("點一下關閉鬧鐘", "Tap to dismiss"))
             .setCategory(Notification.CATEGORY_ALARM)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOngoing(true)

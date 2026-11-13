@@ -10,6 +10,9 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 
+/** 介面文字：手機語言是中文就用中文，其他一律英文。 */
+fun tr(zh: String, en: String): String = if (java.util.Locale.getDefault().language == "zh") zh else en
+
 /** 介面都用程式碼畫，配色跟網頁版一致（深色＋極光漸層）。 */
 object Ui {
     const val BG = 0xFF05060A.toInt()

@@ -17,6 +17,9 @@ const flagText = e => e.title.replace('⏰ 截止：', t('截止') + ' ');
 
 const S = {view: 'day', cal: 'day', date: TODAY(), inbox: 0};
 if (['day', 'week', 'month'].includes(store.get('cal'))) S.view = S.cal = store.get('cal');
+if (['day', 'week', 'month'].includes(QS.get('view'))) S.view = S.cal = QS.get('view');
+else if (['tasks', 'inbox', 'alarms', 'weekly', 'link'].includes(QS.get('view'))) S.view = QS.get('view');
+if (/^\d{4}-\d{2}-\d{2}$/.test(QS.get('date') || '')) S.date = QS.get('date');
 
 async function api(path, method = 'GET', body) {
   const r = await fetch('/api' + path, {method, headers: {'X-Lang': LANG, ...(body ? {'Content-Type': 'application/json'} : {})}, body: body ? JSON.stringify(body) : undefined});
