@@ -71,7 +71,12 @@ const EN = {
   '已新增，把存取碼給對方就能用': 'Added. Give them their access code to get started', '新增成員': 'Add member', '你': 'You',
   '跟另一半或家人共用？新增一位成員：每個人有自己的鬧鐘、待辦和通知，行程和待辦可以選擇「一起」。':
     'Sharing with a partner or family? Add a member: everyone gets their own alarms, to-dos and notifications, and events or to-dos can be marked as shared.',
-  '這天沒有行程': 'Nothing scheduled', '取消': 'Cancel',
+  '這天沒有行程': 'Nothing scheduled',
+  '完成 {0}': '{0} done', '今天沒有待辦': 'Nothing for today', '沒有': 'Nothing', '新增待辦…': 'New to-do…',
+  '這週內': 'This week', '選日期': 'Pick a date', '截止時間': 'Deadline', '請至少選一天': 'Pick at least one day',
+  '可以一次選好幾天，例如每週二、四的課。': 'Pick several days at once, e.g. a class on Tuesdays and Thursdays.',
+  '還沒有固定行程': 'No weekly events yet', '連線資訊（手機 App、手機瀏覽器）': 'Connection (phone app, phone browser)',
+  '進階': 'Advanced', '每日推播': 'Daily briefs', '取消': 'Cancel',
   '取消這天的放假？鬧鐘會依行程重排。': 'Remove this day off? Alarms will be re-planned from your schedule.',
   '刪除這條鬧鐘規則？': 'Delete this alarm rule?', '刪除這個鬧鐘？': 'Delete this alarm?',
   '刪除這個固定行程？之後每週都不會再出現。': 'Delete this weekly event? It will no longer appear any week.',

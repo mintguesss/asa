@@ -243,6 +243,11 @@ kbd{font:11px var(--font)}
 .seg button{border:0;background:none;border-radius:9px;padding:5px 15px;font-size:13px;color:var(--ink2);transition:.25s var(--ease)}
 .seg button:hover{color:var(--hi)}
 .seg button.on{background:var(--grad);color:var(--on);font-weight:650;box-shadow:0 4px 16px -6px var(--a2)}
+.seg{position:relative;isolation:isolate;box-sizing:border-box;max-width:100%}
+.seg::before{content:'';position:absolute;z-index:-1;top:3px;bottom:3px;left:var(--sx,3px);width:var(--sw,0);border-radius:9px;background:var(--grad);box-shadow:0 4px 16px -6px var(--a2);opacity:0}
+.seg.ready::before{opacity:1;transition:left .42s cubic-bezier(.3,1.25,.45,1),width .42s cubic-bezier(.3,1.25,.45,1)}
+.seg.ready button.on{background:none;box-shadow:none}
+.seg button{position:relative}
 .seg.sm button{padding:4px 12px;font-size:12.5px}
 
 /* ---------- 月曆 ---------- */
@@ -468,3 +473,69 @@ pre.brief{white-space:pre-wrap;font:14px/1.75 var(--font);margin:0;color:var(--i
 .gone{overflow:hidden;animation:gone .26s ease forwards!important;pointer-events:none}
 @keyframes gone{to{opacity:0;transform:translateX(24px);height:0;padding-top:0;padding-bottom:0;margin-top:0;margin-bottom:0}}
 @media (max-width:820px){.ask{place-items:end center;padding:14px 12px calc(14px + env(safe-area-inset-bottom,0px))}.askbox{max-width:none}}
+
+
+/* ---------- 待辦頁 ---------- */
+.tgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start;margin-top:18px}
+.tg h3,.wkd h3{display:flex;align-items:center;gap:8px}
+.cnt{display:inline-grid;place-items:center;min-width:22px;height:20px;padding:0 6px;border-radius:999px;font-size:11.5px;font-weight:650;letter-spacing:0;background:rgba(var(--w),.12);color:var(--ink2)}
+.tg h3 .r{margin-left:auto;font-weight:500;letter-spacing:0;text-transform:none}
+.tg.late{border-color:color-mix(in srgb,var(--red) 45%,transparent)}.tg.late h3{color:var(--red)}
+.donesep{height:1px;margin:10px 0 2px;background:linear-gradient(90deg,transparent,rgba(var(--w),.18),transparent)}
+.tg .task.done{opacity:.62}
+.tadd{display:flex;flex-direction:column;gap:12px}
+.tadd-top{display:flex;gap:8px}
+.field.big{flex:1;font-size:16px;padding:11px 14px;border-radius:13px}
+.tadd-top .btn{padding:0 20px}
+.tadd-opts{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center}
+.tadd-opts .field{padding:6px 10px}
+.chipbtn{border:1px dashed rgba(var(--w),.28);background:none;color:var(--ink2);border-radius:999px;padding:5px 12px;font-size:12.5px;cursor:pointer}
+.chipbtn:hover{color:var(--hi);border-color:var(--a1)}
+.tadd .hint{font-size:12px;margin-top:-4px}
+.trange{display:inline-flex;align-items:center;gap:6px}
+.wdpick{display:inline-flex;gap:5px}
+.wdpick button{width:32px;height:32px;border-radius:50%;border:1px solid rgba(var(--w),.2);background:rgba(var(--w),.06);color:var(--ink2);font-size:13px;transition:.2s var(--ease)}
+.wdpick button.on{background:var(--grad);color:var(--on);border-color:transparent;font-weight:650;transform:scale(1.05)}
+
+/* 打勾動畫 */
+.task.checking .chk{animation:swell .5s var(--spring)}
+.task.checking .chk .fill{transform:scale(1);animation:fill .45s var(--spring) both}
+.task.checking .chk svg{stroke-dashoffset:0;animation:tick .28s .15s var(--ease) both}
+.task.checking .tt{color:var(--mute);background:linear-gradient(color-mix(in srgb,var(--a2) 80%,transparent),color-mix(in srgb,var(--a2) 80%,transparent)) no-repeat 0 58%/0 2px;animation:strike .32s .18s var(--ease) forwards}
+.task.checking{animation:settle .3s .36s ease forwards}
+.task.unchecking{opacity:.6;transition:opacity .15s}
+@keyframes strike{to{background-size:100% 2px}}
+@keyframes settle{to{opacity:.55;transform:translateY(4px)}}
+.burst{position:absolute;inset:0;pointer-events:none}
+.burst i{position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px;border-radius:50%;background:var(--a2);box-shadow:0 0 8px var(--a2);
+  animation:burst .55s cubic-bezier(.2,.8,.3,1) forwards;transform:rotate(var(--a)) translateY(0)}
+.burst i:nth-child(even){background:var(--a3);box-shadow:0 0 8px var(--a3)}
+@keyframes burst{60%{opacity:1}to{transform:rotate(var(--a)) translateY(-22px) scale(.4);opacity:0}}
+
+/* 審核：接下來 */
+.qhead{display:flex;align-items:center;gap:8px;margin:34px 4px 10px;font-size:12px;font-weight:650;letter-spacing:.14em;color:var(--mute)}
+.qlist{display:flex;flex-direction:column;gap:8px}
+.q{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:16px;background:var(--glass);border:1px solid rgba(var(--w),.14);backdrop-filter:blur(18px)}
+.enter .q{animation:rise .5s var(--ease) both;animation-delay:calc(var(--i)*50ms + 150ms)}
+.q .qb{flex:1;min-width:0;display:flex;flex-direction:column}
+.q .qb b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q .qb em{font-style:normal;font-size:12px;color:var(--mute)}
+.q .qd{font-size:12.5px;color:var(--ink2)}
+
+/* 固定行程 */
+.wkl{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:18px}
+.wkd.today{border-color:color-mix(in srgb,var(--a2) 60%,transparent)}
+.wkd.today h3{color:var(--a2t)}
+.ag .x{margin-left:auto;border:0;background:none;color:var(--mute);padding:0 4px;opacity:.7}
+.ag .x:hover{color:var(--red);opacity:1}
+.week .col.today{border-color:color-mix(in srgb,var(--a2) 60%,transparent)}
+.tadd + .week{margin-top:18px}
+
+@media (max-width:820px){
+  .tgrid{grid-template-columns:1fr;gap:12px;margin-top:12px}
+  .wkl{grid-template-columns:1fr;gap:12px;margin-top:12px}
+  .tadd{gap:10px}
+  .tadd-opts .seg{width:100%;justify-content:space-between}.tadd-opts .seg button{flex:1}
+  .wdpick{width:100%;justify-content:space-between}.wdpick button{width:36px;height:36px}
+  .trange{flex:1}.trange .field{flex:1}
+}

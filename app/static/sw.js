@@ -1,7 +1,7 @@
 /* Service worker：讓網頁能裝成 App（PWA）。
    網頁本體和素材：先用網路，失敗才用快取（所以更新後馬上看得到新版，斷線時還能開）。
    /api/ 一律走網路，不快取任何資料。 */
-const CACHE = 'asa-v1';
+const CACHE = 'asa-v2';
 const SHELL = ['/', '/static/app.css', '/static/app.js', '/static/i18n.js', '/static/vendor/aurora.js',
   '/static/vendor/borderglow.js', '/static/vendor/borderglow.css', '/static/vendor/theme-toggle.css',
   '/static/icons/icon-192.png'];

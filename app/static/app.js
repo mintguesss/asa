@@ -121,7 +121,7 @@ function taskRow(x, extra = '') {
   const due = x.due ? `<span class="pill ${x.due.slice(0, 10) <= TODAY() && !x.done ? 'red' : ''}">${t('截止 {0}', md(x.due) + ' ' + x.due.slice(11, 16))}</span>` : '';
   const title = x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title)}</a>` : esc(x.title);
   return `<div class="task ${x.done ? 'done' : ''} ${S.pop === x.id ? 'pop' : ''}">
-    <button class="chk ${x.done ? 'on' : ''}" onclick="S.pop=${x.done ? 'null' : x.id};act('/tasks/${x.id}${own(x)}','PATCH',{done:${x.done ? 0 : 1}})" aria-label="${t('完成')}">
+    <button class="chk ${x.done ? 'on' : ''}" onclick="checkTask(this,${x.id},'${own(x)}',${x.done ? 0 : 1})" aria-label="${t('完成')}">
       <span class="ring"></span><span class="fill"></span><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" pathLength="1"/></svg></button>
     <div class="body"><span class="tt">${title}</span>${due || extra || who(x) ? `<div class="meta">${due}${extra}${who(x)}</div>` : ''}</div>
     <button class="x" onclick="act('/tasks/${x.id}${own(x)}','DELETE')" aria-label="${t('刪除')}">✕</button></div>`;
@@ -145,7 +145,7 @@ function timeline(events, {start, end, pxm = 0.8, alarms = [], now = null, compa
     const height = Math.max(compact ? 20 : 30, (b.e - b.s) * pxm - 3);
     h += `<div class="ev ${b.source === 'weekly' ? 'weekly' : ''}" style="top:${top(b.s)}px;height:${height}px;left:calc(${b.lane * 100 / n}% + 2px);width:calc(${100 / n}% - 4px)" title="${esc(b.time)} ${esc(b.title)}">
       <b>${duo(b)}${esc(b.title)}</b>${compact ? '' : `<span class="num">${esc(b.time)}${b.end_time ? '–' + esc(b.end_time) : ''}</span>${b.location ? ' · ' + esc(b.location) : ''}${b.source === 'weekly' ? ' · ' + t('每週') : ''}`}
-      ${b.id && !compact ? `<button class="x" onclick="act('/events/${b.id}${own(b)}','DELETE')">✕</button>` : ''}</div>`;
+      ${b.id && !compact ? `<button class="x" onclick="act('/${b.source === 'tt' ? 'weekly' : 'events'}/${b.id}${own(b)}','DELETE')">✕</button>` : ''}</div>`;
   }
   for (const e of events.filter(isDeadline))
     h += `<div class="flag" style="top:${top(Math.min(mins(e.time), end))}px"><span>${esc(flagText(e))}</span></div>`;
@@ -226,6 +226,7 @@ function decorate() {
   v.querySelectorAll('.card').forEach((c, i) => { c.classList.add('border-glow-card'); c.style.setProperty('--i', i + 2); c.insertAdjacentHTML('beforeend', '<span class="edge-light"></span>'); });
   v.querySelectorAll('.week .col,.rules .rule,.wlist .wrow').forEach((c, i) => c.style.setProperty('--i', i));
   v.querySelectorAll('.hero>*').forEach((c, i) => c.style.setProperty('--i', i));
+  v.querySelectorAll('.seg').forEach(segSync);
   v.classList.toggle('enter', !!S.enter);
   S.enter = false; S.pop = null;
   reveal(v);
@@ -292,8 +293,8 @@ function othersCard(s) {
 const VIEW = {};
 VIEW.day = async () => {
   const [s, pr] = await Promise.all([api('/day?d=' + S.date), api('/pressure')]);
-  const x = s.tasks, isToday = S.date === TODAY(), mob = MOB(), dt = dateText(S.date);
-  const maxLoad = Math.max(3, ...pr.map(p => p.events + p.tasks + p.due.length * 2));
+  const isToday = S.date === TODAY(), mob = MOB(), dt = dateText(S.date);
+  const maxLoad = Math.max(3, ...pr.map(p => p.events + p.tasks + p.due.length * 2)), x = s.tasks;
   const evForm = `<form class="addrow" onsubmit="event.preventDefault();const f=formData(this);act('/events','POST',{title:f.title,start:S.date+'T'+f.time,end:f.end?S.date+'T'+f.end:null,location:f.location||'',shared:f.shared?1:0})">
       <input class="field" type="time" name="time" required><input class="field" type="time" name="end" title="${t('結束（可不填）')}">
       <input class="field" type="text" name="title" placeholder="${t('新增行程')}" required><input class="field" type="text" name="location" placeholder="${t('地點')}" style="max-width:110px">${shareBox()}<button class="btn pri">${t('加入')}</button></form>`;
@@ -301,20 +302,14 @@ VIEW.day = async () => {
     : `<button class="hb" title="${t('這天的固定行程不算，鬧鐘會重排')}" onclick="const r=prompt('${t('放假原因')}','${t('放假')}');if(r!==null)act('/skip','POST',{date:S.date,reason:r},'${t('這天的固定行程不算，鬧鐘已重排')}')">${t('這天放假')}</button>`;
   return `<section class="hero">${calbar('', dayOff)}
       <div class="hgrid"><div><div class="eyebrow">${WDN[wdOf(S.date)]}${isToday ? ' · ' + t('今天') : S.date === shift(TODAY(), 1) ? ' · ' + t('明天') : ''}</div>
-          <h1 class="date" data-t="${dt}"><span>${dt}</span></h1><br><div class="say">${saying(s)}</div></div>
+          <h1 class="date" data-t="${dt}"><span>${dt}</span></h1>${s.skip ? `<div class="say">🚫 ${esc(s.skip.reason || t('放假'))}</div>` : ''}</div>
         ${isToday ? '<div class="clock num" id="clock"></div>' : ''}</div>${runway(s)}</section>
     <div class="cols"><div class="stack">
       <div class="card"><h3>${mob ? t('行程') : t('時間軸')}</h3>${mob ? agenda(s.events, {del: true, now: isToday ? nowMin() : null})
         : timeline(s.events, {...rangeOf([s]), alarms: s.alarms, now: isToday ? nowMin() : null})}
         ${mob ? `<details class="adder"><summary>＋ ${t('新增行程')}</summary>${evForm}</details>` : evForm}</div>
-      ${othersCard(s)}
     </div><div class="stack">
-      <div class="card"><h3>${t('待辦')}</h3>
-        ${x.overdue.length ? `<div class="sec">${t('逾期')}</div>` + x.overdue.map(k => taskRow(k, `<span class="pill red">${t('原訂 {0}', md(k.plan_date))}</span><a class="pill" href="#" onclick="act('/tasks/${k.id}${own(k)}','PATCH',{plan_date:S.date});return false">${t('移到這天')}</a>`)).join('') : ''}
-        <div class="sec">${isToday ? t('今天') : md(S.date)}</div>${x.day.length ? x.day.map(k => taskRow(k)).join('') : `<div class="empty">${t('這天沒有待辦')}</div>`}
-        <form class="addrow" onsubmit="event.preventDefault();act('/tasks','POST',{...formData(this),scope:'day',plan_date:S.date})"><input class="field" type="text" name="title" placeholder="${t('加一項待辦')}" required>${shareBox()}<button class="btn">${t('加入')}</button></form>
-        <div class="sec">${t('這一週')}</div>${x.week.length ? x.week.map(k => taskRow(k)).join('') : mob ? '' : `<div class="empty">${t('沒有本週待辦')}</div>`}
-        <form class="addrow" onsubmit="event.preventDefault();act('/tasks','POST',{...formData(this),scope:'week',plan_date:S.date})"><input class="field" type="text" name="title" placeholder="${t('這週要完成的事')}" required>${shareBox()}<button class="btn">${t('加入')}</button></form></div>
+      ${othersCard(s)}
       <div class="card"><h3 title="${t('越高代表那天越滿；紅色數字是截止的數量')}">${t('未來 14 天')}</h3>
         <div class="press">${pr.map((p, i) => { const load = p.events + p.tasks + p.due.length * 2, lv = p.due.length >= 2 ? 3 : p.due.length ? 2 : load >= 4 ? 1 : 0;
           return `<button class="d ${p.date === TODAY() ? 'today' : ''}" onclick="go('day','${p.date}')" title="${p.date}${p.due.length ? ' · ' + esc(p.due.join(', ')) : ''}">
@@ -353,21 +348,62 @@ VIEW.month = async () => {
 
 /* ---------- 待辦 ---------- */
 VIEW.tasks = async () => {
-  const all = await api('/tasks?include_done=true'), td = TODAY(), wkEnd = shift(td, 6 - wdOf(td));
-  const open = all.filter(k => !k.done), done = all.filter(k => k.done).sort((a, b) => (b.done_at || '').localeCompare(a.done_at || '')).slice(0, MOB() ? 6 : 15);
-  const g = {逾期: [], 今天: [], 本週: [], 之後: []};
-  for (const k of open) {
+  const all = await api('/tasks?include_done=true'), td = TODAY(), wkStart = shift(td, -wdOf(td)), wkEnd = shift(wkStart, 6);
+  const G = {逾期: [], 今天: [], 本週: [], 之後: []};
+  for (const k of all) {
     const d = k.plan_date || (k.due || '').slice(0, 10) || td;
-    (k.scope === 'week' ? (d < shift(td, -6) ? g.逾期 : d <= wkEnd ? g.本週 : g.之後) : d < td ? g.逾期 : d === td ? g.今天 : d <= wkEnd ? g.本週 : g.之後)
-      .push(taskRow(k, k.scope === 'week' ? `<span class="pill teal">${t('整週')}</span>` : d !== td ? `<span class="pill">${md(d)}</span>` : ''));
+    let g = k.scope === 'week' ? (d < wkStart ? '逾期' : d <= wkEnd ? '本週' : '之後') : d < td ? '逾期' : d === td ? '今天' : d <= wkEnd ? '本週' : '之後';
+    if (k.done) {                               // 做完的留在原本那一組的最下面；太久以前的就不顯示了
+      const at = (k.done_at || '').slice(0, 10);
+      if (g === '逾期') { if (at !== td) continue; g = '今天'; }
+      else if (at && at < shift(td, -6)) continue;
+    }
+    G[g].push(k);
   }
-  return `<div class="cols"><div class="card"><h3>${t('未完成')} · ${open.length}</h3>
-      ${Object.entries(g).filter(([, v]) => v.length).map(([k, v]) => `<div class="sec">${t(k)}</div>${v.join('')}`).join('') || `<div class="empty">${t('全部做完了 🎉')}</div>`}
-      <form class="addrow" onsubmit="event.preventDefault();act('/tasks','POST',formData(this))"><input class="field" type="text" name="title" placeholder="${t('新增待辦')}" required>
-        <select class="field" name="scope"><option value="day">${t('某一天')}</option><option value="week">${t('某一週')}</option></select><input class="field" type="date" name="plan_date" value="${td}">
-        <input class="field" type="datetime-local" name="due" title="${t('截止（可不填）')}">${shareBox()}<button class="btn pri">${t('加入')}</button></form></div>
-    <div class="card"><h3>${t('最近完成')}</h3>${done.map(k => taskRow(k)).join('') || `<div class="empty">${t('還沒有完成的項目')}</div>`}</div></div>`;
+  const tag = k => k.scope === 'week' ? `<span class="pill teal">${t('整週')}</span>` : (k.plan_date && k.plan_date !== td) ? `<span class="pill">${md(k.plan_date)}</span>` : '';
+  const group = (name, list) => {
+    const open = list.filter(k => !k.done), done = list.filter(k => k.done);
+    if (name === '逾期' && !open.length) return '';
+    if (name === '之後' && !list.length) return '';
+    return `<div class="card tg ${name === '逾期' ? 'late' : ''}"><h3>${t(name)}<span class="cnt">${open.length}</span>${done.length ? `<span class="r muted">${t('完成 {0}', done.length)}</span>` : ''}</h3>
+      ${open.map(k => taskRow(k, tag(k))).join('') || `<div class="empty">${name === '今天' ? t('今天沒有待辦') : t('沒有')}</div>`}
+      ${done.length ? `<div class="donesep"></div>${done.map(k => taskRow(k, tag(k))).join('')}` : ''}</div>`;
+  };
+  return `${taskForm()}<div class="tgrid">${['逾期', '今天', '本週', '之後'].map(k => group(k, G[k])).join('')}</div>`;
 };
+/* 新增待辦：上面打字，下面點選什麼時候做 */
+function taskForm() {
+  return `<form class="card tadd" onsubmit="event.preventDefault();addTask(this)">
+    <div class="tadd-top"><input class="field big" type="text" name="title" placeholder="${t('新增待辦…')}" required autocomplete="off"><button class="btn pri">${t('加入')}</button></div>
+    <div class="tadd-opts">
+      <div class="seg sm when">${[['today', '今天'], ['tomorrow', '明天'], ['week', '這週內'], ['pick', '選日期']].map(([v, l], i) => `<button type="button" data-w="${v}" class="${i ? '' : 'on'}" onclick="whenPick(this)">${t(l)}</button>`).join('')}</div>
+      <input class="field" type="date" name="pick" value="${shift(TODAY(), 2)}" hidden>
+      <button type="button" class="chipbtn" onclick="this.hidden=true;const d=this.nextElementSibling;d.hidden=false;d.focus()">＋ ${t('截止時間')}</button>
+      <input class="field" type="datetime-local" name="due" hidden>
+      ${shareBox()}
+    </div></form>`;
+}
+function whenPick(b) { b.closest('form').querySelector('[name=pick]').hidden = b.dataset.w !== 'pick'; }
+async function addTask(f) {
+  const v = formData(f), w = f.querySelector('.when .on').dataset.w, td = TODAY();
+  const body = {title: v.title, due: v.due || null, shared: v.shared ? 1 : 0, scope: w === 'week' ? 'week' : 'day',
+    plan_date: w === 'tomorrow' ? shift(td, 1) : w === 'pick' ? (v.pick || td) : td};
+  await api('/tasks', 'POST', body); toast(t('已加入')); render();
+}
+/* 打勾：勾勾彈出、字被劃掉、噴一點光點，然後才移到這一組的最下面 */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function checkTask(btn, id, owner, done) {
+  const row = btn.closest('.task');
+  if (done && !CALM) {
+    row.classList.add('checking');
+    const b = document.createElement('span'); b.className = 'burst';
+    b.innerHTML = Array.from({length: 8}, (_, i) => `<i style="--a:${i * 45 + 20}deg"></i>`).join('');
+    btn.append(b);
+    navigator.vibrate?.(12);
+    await sleep(560);
+  } else if (!done) { row.classList.add('unchecking'); await sleep(160); }
+  await api(`/tasks/${id}${owner}`, 'PATCH', {done}); render();
+}
 
 /* ---------- 審核 ---------- */
 const KIND = {homework: ['作業', 'sun'], exam: ['考試', 'red'], announcement: ['公告', 'teal'], event: ['行程', 'teal'], other: ['其他', '']};
@@ -385,8 +421,9 @@ VIEW.inbox = async () => {
       <h2>${esc(top.title)}</h2>${top.due ? `<div><span class="pill ${ev ? 'teal' : 'red'}">${ev ? '' : t('截止') + ' '}${esc(top.due.replace('T', ' '))}${top.end ? '–' + esc(top.end.slice(11, 16)) : ''}</span>${top.location ? ` <span class="pill">${esc(top.location)}</span>` : ''}</div>` : ''}
       ${top.body ? `<p class="muted">${esc(top.body).slice(0, 400)}</p>` : ''}${top.link ? `<p><a href="${esc(top.link)}" target="_blank" rel="noopener">${t('打開原頁 ↗')}</a></p>` : ''}
       <div class="addrow">${ev ? '' : top.kind === 'announcement' ? `<label class="muted"><input type="checkbox" id="astask"> ${t('也建立成待辦')}</label>` : `<label class="muted">${t('預計哪天做')} <input class="field" type="date" id="plan" value="${TODAY()}"></label>`}</div>
-      <div class="acts"><button class="btn" onclick="triage(false)">${t('略過')}<kbd>X</kbd></button><button class="btn sun" onclick="triage(true)">${t('核准')}<kbd>A</kbd></button></div></div></div>
-    ${items.length > 1 ? `<div class="card" style="margin-top:40px"><h3>${t('接下來')}</h3>${items.slice(1, 9).map(i => `<div class="task"><div class="body">${esc(i.course ? `[${i.course}] ` : '')}${esc(i.title)}</div>${i.due ? `<span class="pill">${md(i.due)}</span>` : ''}</div>`).join('')}</div>` : ''}${manual}</div>`;
+      <div class="acts"><button class="btn" onclick="triage(false)">${t('略過')}</button><button class="btn sun" onclick="triage(true)">${t('核准')}</button></div></div></div>
+    ${items.length > 1 ? `<div class="qhead">${t('接下來')}<span class="cnt">${items.length - 1}</span></div><div class="qlist">${items.slice(1, 9).map((i, n) => { const [kn, kc] = KIND[i.kind] || KIND.other;
+      return `<div class="q" style="--i:${n}"><span class="pill ${kc}">${t(kn)}</span><div class="qb"><b>${esc(i.title)}</b>${i.course ? `<em>${esc(i.course)}</em>` : ''}</div>${i.due ? `<span class="qd num">${md(i.due)}</span>` : ''}</div>`; }).join('')}</div>` : ''}${manual}</div>`;
 };
 function triage(ok) {
   if (!S.top) return;
@@ -429,20 +466,29 @@ VIEW.alarms = async () => {
 
 /* ---------- 固定行程 ---------- */
 VIEW.weekly = async () => {
-  const w = await api('/weekly');
-  const days = [0, 1, 2, 3, 4, 5, 6].map(d => ({events: w.filter(k => k.weekday === d).map(k => ({...k, time: k.start_time, source: 'tt'}))}));
-  const form = `<div class="card" style="margin-bottom:18px"><h3>${t('每週固定行程')}</h3>
-      <form class="addrow" style="margin:0" onsubmit="event.preventDefault();const f=formData(this);f.weekday=+f.weekday;act('/weekly','POST',f,'${t('已加入')}')">
-        <select class="field" name="weekday">${WDN.map((c, i) => `<option value="${i}">${c}</option>`).join('')}</select><input class="field" type="time" name="start_time" required><input class="field" type="time" name="end_time">
-        <input class="field" type="text" name="title" placeholder="${t('名稱（課、班、健身…）')}" required><input class="field" type="text" name="location" placeholder="${t('地點')}" style="max-width:120px"><button class="btn pri">${t('加入')}</button></form></div>`;
-  const del = e => `<a href="#" class="x" onclick="act('/weekly/${e.id}','DELETE');return false" aria-label="${t('刪除')}">✕</a>`;
-  if (MOB()) return form + `<div class="wlist">${days.map((s, d) => s.events.length ? `<div class="wrow"><div class="wd"><b>${WD1[d]}</b></div>
-      <div class="wb">${s.events.map(e => `<div><i class="num">${esc(e.start_time)}${e.end_time ? '–' + esc(e.end_time) : ''}</i> ${esc(e.title)}${e.location ? ` <em>${esc(e.location)}</em>` : ''} ${del(e)}</div>`).join('')}</div></div>` : '').join('')}</div>`;
-  const rg = {start: 480, end: 1080};
-  if (w.length) { rg.start = Math.floor(Math.min(...w.map(k => mins(k.start_time))) / 60) * 60; rg.end = Math.ceil(Math.max(...w.map(k => mins(k.end_time || k.start_time) + (k.end_time ? 0 : 50))) / 60) * 60; }
-  return form + `<div class="week">${days.map((s, d) => `<div class="col"><div class="hd"><b>${WDN[d]}</b></div>${timeline(s.events.map(e => ({...e, id: null})), {...rg, pxm: 0.7})}
-      <div class="mini">${s.events.map(e => `<div>${esc(e.start_time)} ${esc(e.title)} ${del(e)}</div>`).join('') || '<span class="muted">—</span>'}</div></div>`).join('')}</div>`;
+  const w = await api('/weekly'), today = wdOf(TODAY());
+  const days = [0, 1, 2, 3, 4, 5, 6].map(d => w.filter(k => k.weekday === d));
+  const form = `<form class="card tadd" onsubmit="event.preventDefault();addWeekly(this)">
+      <div class="tadd-top"><input class="field big" type="text" name="title" placeholder="${t('名稱（課、班、健身…）')}" required autocomplete="off"><button class="btn pri">${t('加入')}</button></div>
+      <div class="tadd-opts"><div class="wdpick">${WD1.map((c, i) => `<button type="button" class="${i === today ? 'on' : ''}" onclick="this.classList.toggle('on')" data-d="${i}">${c}</button>`).join('')}</div>
+        <span class="trange"><input class="field" type="time" name="start_time" required><span class="muted">–</span><input class="field" type="time" name="end_time"></span>
+        <input class="field" type="text" name="location" placeholder="${t('地點')}" style="max-width:140px"></div>
+      <div class="muted hint">${t('可以一次選好幾天，例如每週二、四的課。')}</div></form>`;
+  const item = e => `<div class="ag weekly"><i class="num">${esc(e.start_time)}${e.end_time ? `<s>${esc(e.end_time)}</s>` : ''}</i>
+      <b>${esc(e.title)}${e.location ? `<em>${esc(e.location)}</em>` : ''}</b><button class="x" onclick="act('/weekly/${e.id}','DELETE')" aria-label="${t('刪除')}">✕</button></div>`;
+  if (MOB() || !w.length) return form + `<div class="wkl">${days.map((list, d) => list.length ? `<div class="card wkd ${d === today ? 'today' : ''}"><h3>${WDN[d]}<span class="cnt">${list.length}</span></h3>
+      <div class="agenda">${list.map(item).join('')}</div></div>` : '').join('') || `<div class="empty">${t('還沒有固定行程')}</div>`}</div>`;
+  const rg = {start: Math.floor(Math.min(...w.map(k => mins(k.start_time))) / 60) * 60,
+    end: Math.ceil(Math.max(...w.map(k => mins(k.end_time || k.start_time) + (k.end_time ? 0 : 50))) / 60) * 60};
+  return form + `<div class="week">${days.map((list, d) => `<div class="col ${d === today ? 'today' : ''}"><div class="hd"><b>${WDN[d]}</b></div>
+      ${timeline(list.map(e => ({...e, time: e.start_time, source: 'tt'})), {...rg, pxm: 0.7})}</div>`).join('')}</div>`;
 };
+async function addWeekly(f) {
+  const v = formData(f), ds = [...f.querySelectorAll('.wdpick .on')].map(b => +b.dataset.d);
+  if (!ds.length) return toast(t('請至少選一天'));
+  for (const d of ds) await api('/weekly', 'POST', {...v, weekday: d});
+  toast(t('已加入')); render();
+}
 
 /* ---------- 設定 ---------- */
 const sent = r => { const ok = Object.entries(r).filter(([, v]) => v !== '未設定'); toast(ok.length ? ok.map(([k, v]) => `${k}: ${v}`).join(' | ') : t('還沒有設定任何通知管道')); };
@@ -465,8 +511,11 @@ VIEW.link = async () => {
         <dt>${t('起床方式')}</dt><dd>${pick('alarm_mode', [['app', '手機 App 鬧鐘'], ['notify', '用推播叫'], ['off', '不需要']])}</dd>
         <dt>${t('行程提醒')}</dt><dd><input class="field num" type="number" min="0" max="720" value="${p.remind_minutes}" style="width:76px" onchange="${patch('{remind_minutes:+this.value}')}"> <span class="muted">${t('分鐘前推播（0 = 不提醒）')}</span></dd>
         ${P.multi ? `<dt>${t('我的行程')}</dt><dd>${pick('visible', [['full', '其他人看得到'], ['busy', '只顯示有事'], ['none', '不顯示']])}</dd>
-        <dt>${t('存取碼')}</dt><dd><code>${esc(p.token)}</code></dd>
-        <dt>${t('手機瀏覽器')}</dt><dd><code>${esc(url)}/?token=${esc(p.token)}</code></dd>` : ''}</dl>
+` : ''}</dl>
+      <details class="fold in"><summary>${t('連線資訊（手機 App、手機瀏覽器）')}</summary><dl class="kv">
+        <dt>${t('伺服器網址')}</dt><dd><code>${esc(url)}</code></dd><dt>${t('存取碼')}</dt><dd><code>${esc(p.token)}</code></dd>
+        <dt>${t('手機瀏覽器')}</dt><dd><code>${esc(url)}/?token=${esc(p.token)}</code></dd>
+        ${p.me ? `<dt>${t('最後同步')}</dt><dd>${p.phone_last_sync ? esc(p.phone_last_sync.replace('T', ' ')) : `<span class="no">${t('還沒連上來過')}</span>`}</dd>` : ''}</dl></details>
       <details class="fold in"><summary>${t('這個人的通知管道')}</summary>
         <form onsubmit="event.preventDefault();pact('/profiles/${p.id}','PATCH',{notify:formData(this)},'${t('已儲存')}')">
           ${p.channels.map(c => `<div class="chrow"><span class="chip ${c.configured ? 'on' : ''}">${esc(c.label)}</span>${c.env.map(k => `<input class="field" type="password" autocomplete="off" name="${k}" placeholder="${k}">`).join('')}</div>`).join('')}
@@ -478,21 +527,16 @@ VIEW.link = async () => {
   const members = `<div class="card"><h3>${P.multi ? t('成員') : t('提醒與共用')}${P.admin ? ` <span class="r"><button class="btn" onclick="const n=prompt('${t('新成員的名字')}');if(n)pact('/profiles','POST',{name:n},'${t('已新增，把存取碼給對方就能用')}')">＋ ${t('新增成員')}</button></span>` : ''}</h3>
       ${P.multi ? '' : `<div class="muted" style="margin-bottom:6px">${t('跟另一半或家人共用？新增一位成員：每個人有自己的鬧鐘、待辦和通知，行程和待辦可以選擇「一起」。')}</div>`}
       ${P.list.map(member).join('')}</div>`;
-  return `<div class="cols"><div class="stack">${look}${members}
-    <div class="card"><h3>${t('手機 App')}</h3><dl class="kv"><dt>${t('伺服器網址')}</dt><dd>${st.urls.length ? st.urls.map(u => `<code>${esc(u)}</code>`).join(' ') : `<code>${esc(url)}</code>`}</dd><dt>${t('存取碼')}</dt><dd><code>${esc(st.phone_token)}</code></dd>
-      <dt>${t('最後同步')}</dt><dd>${st.phone_last_sync ? esc(st.phone_last_sync.replace('T', ' ')) : `<span class="no">${t('還沒連上來過')}</span>`}</dd>
-      <dt>${t('手機瀏覽器')}</dt><dd><code>${esc(url)}/?token=…</code></dd></dl></div>
-    <div class="card"><h3>${t('資料來源')} <span class="r muted">${t('每 {0} 分鐘', st.sync_minutes)}</span></h3>
+  const more = `<div class="card"><h3>${t('進階')}</h3>
+    <details class="fold in"><summary>${t('資料來源')} <span class="muted">· ${t('每 {0} 分鐘', st.sync_minutes)}</span></summary>
       ${st.sources.map(k => `<div class="src"><div><b>${esc(k.label)}</b><div class="muted">${k.configured ? esc(k.last || t('還沒執行過')) : t('在 .env 填') + ' ' + k.env.map(e => `<code>${e}</code>`).join(' ')}</div></div>
-        ${k.configured ? `<button class="btn" onclick="toast('${t('抓取中…')}');api('/sources/${k.name}/run','POST').then(r=>{toast(r.ok?t('抓到 {0} 筆，新增 {1} 筆',r.total,r.new):r.message);render()})">${t('立刻抓')}</button>` : `<span class="no">○ ${t('未設定')}</span>`}</div>`).join('')}</div>
-  </div><div class="stack">
-    <div class="card"><h3>${t('通知')} <span class="r"><button class="btn" onclick="api('/notify/test','POST').then(sent)">${t('測試')}</button></span></h3>
-      <div class="chips">${st.channels.map(c => `<span class="chip ${c.configured ? 'on' : ''}" title="${c.configured ? t('已設定') : t('在 .env 填') + ' ' + c.env.join(', ')}">${esc(c.label)}</span>`).join('')}</div>
-      <dl class="kv" style="margin-top:14px"><dt>${t('早上簡報')}</dt><dd class="num">${esc(st.morning)}</dd><dt>${t('晚上預告')}</dt><dd class="num">${esc(st.evening)}</dd></dl>
-      <details class="fold in"><summary>${t('今晚會推播的內容')}</summary><pre class="brief">${esc(br.text)}</pre>
-        <button class="btn" style="margin-top:10px" onclick="api('/notify/brief','POST').then(r=>sent(r.result))">${t('現在推播')}</button></details></div>
-    <div class="muted" style="padding:0 6px">${t('設定都在 .env，改完重新啟動才會生效。')}</div>
-  </div></div>`;
+        ${k.configured ? `<button class="btn" onclick="toast('${t('抓取中…')}');api('/sources/${k.name}/run','POST').then(r=>{toast(r.ok?t('抓到 {0} 筆，新增 {1} 筆',r.total,r.new):r.message);render()})">${t('立刻抓')}</button>` : `<span class="no">○ ${t('未設定')}</span>`}</div>`).join('')}</details>
+    <details class="fold in"><summary>${t('每日推播')} <span class="muted">· ${esc(st.morning)} / ${esc(st.evening)}</span></summary>
+      <dl class="kv"><dt>${t('早上簡報')}</dt><dd class="num">${esc(st.morning)}</dd><dt>${t('晚上預告')}</dt><dd class="num">${esc(st.evening)}</dd></dl>
+      <pre class="brief">${esc(br.text)}</pre>
+      <div class="addrow"><button class="btn" onclick="api('/notify/brief','POST').then(r=>sent(r.result))">${t('現在推播')}</button></div></details>
+    <div class="muted" style="margin-top:14px">${t('設定都在 .env，改完重新啟動才會生效。')}</div></div>`;
+  return `<div class="cols"><div class="stack">${members}</div><div class="stack">${look}${more}</div></div>`;
 };
 
 /* ---------- 頂列：指令列、語言、亮暗 ---------- */
@@ -538,6 +582,27 @@ document.addEventListener('keydown', e => {
   }
 });
 setInterval(() => { if (S.view === 'day' && !/INPUT|SELECT/.test(document.activeElement.tagName)) render(); }, 60000);
+/* ---------- 分段按鈕：一塊底色在選項之間滑動 ---------- */
+function segSync(seg) {
+  const b = seg.querySelector('button.on');
+  if (!b || !b.offsetWidth) return;
+  seg.style.setProperty('--sx', b.offsetLeft + 'px'); seg.style.setProperty('--sw', b.offsetWidth + 'px');
+  if (!seg.classList.contains('ready')) { void seg.offsetWidth; seg.classList.add('ready'); }
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('.seg button');
+  if (!b || b.classList.contains('on')) return;
+  const seg = b.parentElement;
+  seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  segSync(seg);
+  const fn = b.onclick;
+  if (!fn || b.type === 'button' && b.closest('form')) return;   // 表單裡的選項不用等
+  e.stopImmediatePropagation(); e.preventDefault();
+  setTimeout(() => fn.call(b, e), CALM ? 0 : 230);                // 讓底色先滑過去再換畫面
+}, true);
+document.addEventListener('toggle', e => e.target.querySelectorAll?.('.seg').forEach(segSync), true);
+addEventListener('resize', () => document.querySelectorAll('.seg').forEach(segSync));
+
 /* ---------- 觸控裝置的動畫：沒有 hover，改成點擊漣漪和捲動進場 ---------- */
 const TOUCH = matchMedia('(hover:none),(pointer:coarse)').matches;
 const CALM = matchMedia('(prefers-reduced-motion:reduce)').matches;
