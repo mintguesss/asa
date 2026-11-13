@@ -108,7 +108,7 @@ def collect() -> list[dict]:
     now = datetime.now()
     days = int(os.getenv("ICS_DAYS_AHEAD", "60"))
     items: list[dict] = []
-    with httpx.Client(follow_redirects=True, timeout=30, headers={"User-Agent": "LifeHub/1.0"}) as client:
+    with httpx.Client(follow_redirects=True, timeout=30, headers={"User-Agent": "Asa/1.0"}) as client:
         for kind, name, url in _feeds():
             r = client.get(url)
             r.raise_for_status()

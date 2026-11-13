@@ -1,8 +1,15 @@
-"""SQLite 資料層：所有資料都存在 data/lifehub.db。"""
+"""SQLite 資料層：所有資料都存在 data/asa.db。"""
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "lifehub.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "asa.db"
+
+# 專案原名 LifeHub：第一次啟動時把舊資料庫改成新檔名
+for _suffix in ("", "-wal", "-shm"):
+    _old = DB_PATH.with_name("lifehub.db" + _suffix)
+    _new = DB_PATH.with_name("asa.db" + _suffix)
+    if _old.exists() and not _new.exists():
+        _old.rename(_new)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (

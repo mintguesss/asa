@@ -54,6 +54,7 @@ const EN = {
   '每一頁一個顏色，日曆跟著時段和星期變': 'One colour per page; the calendar follows the time of day and the weekday',
   '每換一頁隨機換一個顏色': 'A random colour on every page change',
   '極光': 'Aurora', '晨曦': 'Dawn', '海洋': 'Ocean', '晚霞': 'Dusk', '淺紫': 'Lilac', '薄荷': 'Mint', '日出': 'Sunrise', '玫瑰': 'Rose', '金色': 'Gold',
+  '櫻花': 'Sakura', '蜜桃': 'Peach', '珊瑚': 'Coral', '葡萄': 'Grape', '霓虹': 'Neon', '冰川': 'Ice', '潟湖': 'Lagoon', '森林': 'Forest', '抹茶': 'Matcha', '夕陽': 'Sunset', '餘燼': 'Ember', '石墨': 'Graphite',
   '手機 App': 'Phone app', '伺服器網址': 'Server URL', '存取碼': 'Access code', '最後同步': 'Last sync', '還沒連上來過': 'Never connected',
   '手機瀏覽器': 'Phone browser', '這台電腦的IP': 'this-computer-ip', '資料來源': 'Sources', '每 {0} 分鐘': 'every {0} min', '還沒執行過': 'Never run',
   '在 .env 填': 'Set in .env:', '立刻抓': 'Run now', '抓取中…': 'Fetching…', '抓到 {0} 筆，新增 {1} 筆': '{0} found, {1} new',

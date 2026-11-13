@@ -1,4 +1,4 @@
-package tw.lifehub.alarm
+package tw.asa.alarm
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -93,7 +93,7 @@ class AlarmService : Service() {
 
     private fun startRinging() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "lifehub:alarm").apply { acquire(RING_LIMIT + 10_000L) }
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "asa:alarm").apply { acquire(RING_LIMIT + 10_000L) }
 
         // 鬧鐘音量太小就先拉到六成，響完再調回去
         try {

@@ -1,4 +1,4 @@
-"""LifeHub 主程式：API + 排程 + 網頁介面。"""
+"""Asa 主程式：API + 排程 + 網頁介面。"""
 import hmac
 import os
 import secrets
@@ -134,7 +134,7 @@ async def lifespan(_: FastAPI):
     sched.shutdown(wait=False)
 
 
-app = FastAPI(title="LifeHub", lifespan=lifespan)
+app = FastAPI(title="Asa", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
 
@@ -502,7 +502,7 @@ def source_run(name: str):
 # ---------- 通知 ----------
 @app.post("/api/notify/test")
 def notify_test():
-    return notify.send(tr("✅ LifeHub 通知測試成功"))
+    return notify.send(tr("✅ Asa 通知測試成功"))
 
 
 @app.post("/api/notify/brief")

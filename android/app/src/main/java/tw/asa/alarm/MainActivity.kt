@@ -1,4 +1,4 @@
-package tw.lifehub.alarm
+package tw.asa.alarm
 
 import android.Manifest
 import android.app.Activity
@@ -38,7 +38,7 @@ class MainActivity : Activity() {
         val pad = Ui.dp(this, 20)
         root.setPadding(pad, Ui.dp(this, 28), pad, Ui.dp(this, 40))
 
-        root.addView(Ui.text(this, "LIFEHUB", 13f, Ui.MUTE, true).also { it.letterSpacing = 0.3f })
+        root.addView(Ui.text(this, "ASA", 13f, Ui.MUTE, true).also { it.letterSpacing = 0.3f })
 
         // 下一個鬧鐘
         val hero = Ui.card(this)
@@ -72,7 +72,7 @@ class MainActivity : Activity() {
 
         // 伺服器設定
         val server = Ui.card(this)
-        server.addView(Ui.text(this, "電腦上的 LifeHub", 13f, Ui.MUTE, true))
+        server.addView(Ui.text(this, "電腦上的 Asa", 13f, Ui.MUTE, true))
         val url = field("伺服器網址，例如 http://100.x.x.x:8787", Store.url(this), InputType.TYPE_TEXT_VARIATION_URI)
         val token = field("存取碼（網頁版「連線」頁看得到）", Store.token(this), InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)
         server.addView(url)

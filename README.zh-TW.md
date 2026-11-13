@@ -1,4 +1,4 @@
-# LifeHub
+# Asa
 
 **會自己排的鬧鐘。** 每天晚上依照明天的行程，自動幫你設好一整組起床鬧鐘：第一個行程早就早響，放假就不響。內建行事曆、每日／每週待辦，以及從其他系統抓資料、審核後才進來的收件匣。
 
@@ -9,7 +9,7 @@
 - Windows：雙擊 `run.bat`
 - macOS / Linux：`./run.sh`
 
-然後開 <http://localhost:8787>。第一次啟動會自動建立虛擬環境、資料庫（`data/lifehub.db`）和給其他裝置用的存取碼（`.env` 裡的 `PHONE_TOKEN`）。
+然後開 <http://localhost:8787>。第一次啟動會自動建立虛擬環境、資料庫（`data/asa.db`）和給其他裝置用的存取碼（`.env` 裡的 `PHONE_TOKEN`）。
 
 - 設定都在 `.env`（範本是 `.env.example`），全部都可以留空，改完要重新啟動。
 - 這台電腦直接放行；其他裝置要帶存取碼（瀏覽器網址加一次 `?token=…`）。
@@ -39,8 +39,8 @@
 
 ## 手機 App（Android）
 
-1. 雙擊 `android\build_apk.bat`。它會下載 JDK、Gradle、Android SDK 到 `D:\lifehub-build`（約 1.5 GB），中途要你同意 Android SDK 授權條款。也可以直接用 Android Studio 開 `android/` 建置。
-2. 把 `android\LifeHubAlarm.apk` 傳到手機安裝。
+1. 雙擊 `android\build_apk.bat`。它會下載 JDK、Gradle、Android SDK 到 `D:\asa-build`（約 1.5 GB），中途要你同意 Android SDK 授權條款。也可以直接用 Android Studio 開 `android/` 建置。
+2. 把 `android\AsaAlarm.apk` 傳到手機安裝。
 3. 打開 App，填「伺服器網址」和「存取碼」（網頁版「設定」頁有），按「儲存並同步」。
 4. 把 App 裡列出的權限都開啟，再按「10 秒後響一個測試鬧鐘」確認會響。
 

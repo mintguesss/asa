@@ -1,6 +1,6 @@
-# LifeHub
+# Asa
 
-**Self-hosted alarms that plan themselves.** LifeHub looks at tomorrow's schedule every evening and sets a whole batch of wake-up alarms for you — earlier when your first event is earlier, none when you have the day off. A calendar, daily/weekly to-dos and a review inbox for things pulled from other systems are built in.
+**Self-hosted alarms that plan themselves.** Asa looks at tomorrow's schedule every evening and sets a whole batch of wake-up alarms for you — earlier when your first event is earlier, none when you have the day off. A calendar, daily/weekly to-dos and a review inbox for things pulled from other systems are built in.
 
 > English / 繁體中文 UI, light and dark themes. 中文說明：[README.zh-TW.md](README.zh-TW.md)
 
@@ -24,18 +24,18 @@
 Needs Python 3.11+.
 
 ```bash
-git clone <this repo> && cd lifehub
+git clone <this repo> && cd asa
 cp .env.example .env      # optional — everything works with an empty .env
 ./run.sh                  # Windows: run.bat
 ```
 
-Open <http://localhost:8787>. The first start creates the virtualenv, the database (`data/lifehub.db`) and an access code for other devices (`PHONE_TOKEN` in `.env`).
+Open <http://localhost:8787>. The first start creates the virtualenv, the database (`data/asa.db`) and an access code for other devices (`PHONE_TOKEN` in `.env`).
 
 Requests from the same machine are trusted; every other device must send the access code (`?token=…` once in the browser, or the `X-Token` header). Don't expose the port to the public internet — use your LAN or a private network such as Tailscale.
 
 ## Android app
 
-Source is in `android/` (Kotlin, no third-party dependencies, minSdk 26). Build with Android Studio, or on Windows run `android\build_apk.bat`, which downloads a JDK, Gradle and the Android SDK into a separate folder and produces `android/LifeHubAlarm.apk`. Then enter the server URL and access code shown on the Settings page.
+Source is in `android/` (Kotlin, no third-party dependencies, minSdk 26). Build with Android Studio, or on Windows run `android\build_apk.bat`, which downloads a JDK, Gradle and the Android SDK into a separate folder and produces `android/AsaAlarm.apk`. Then enter the server URL and access code shown on the Settings page.
 
 ## Configuration
 
@@ -44,7 +44,7 @@ Everything lives in `.env` — see [.env.example](.env.example). Restart after c
 ## Adding a source or a notification channel
 
 - **Source**: add a module to `app/sources/` exposing `NAME`, `LABEL`, `ENV`, `configured()` and `collect()`, and list it in `app/sources/__init__.py` (the docstring there describes the item format).
-- **Language**: UI strings are in `app/static/i18n.js`, server strings in `app/i18n.py` (set `LIFEHUB_LANG` for push messages).
+- **Language**: UI strings are in `app/static/i18n.js`, server strings in `app/i18n.py` (set `ASA_LANG` for push messages).
 - **Channel**: add a function and one line to `CHANNELS` in `app/notify.py`.
 
 ## Stack

@@ -2,7 +2,7 @@
 
 程式裡一律寫中文原文：tr("共 {n} 筆", n=3)。語言是英文時，從下面的 EN 查對應的翻譯。
 - 網頁請求：依 X-Lang 標頭（前端的語言切換）。
-- 排程推播：依 .env 的 LIFEHUB_LANG（zh 或 en，預設 zh）。
+- 排程推播：依 .env 的 ASA_LANG（zh 或 en，預設 zh）。
 要加其他語言，再加一個字典、在 tr() 裡多查一層即可。
 """
 import contextvars
@@ -15,7 +15,7 @@ WD_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 def default() -> str:
-    return "en" if os.getenv("LIFEHUB_LANG", "zh").strip().lower().startswith("en") else "zh"
+    return "en" if os.getenv("ASA_LANG", "zh").strip().lower().startswith("en") else "zh"
 
 
 def set_lang(value: str | None) -> None:
@@ -92,7 +92,7 @@ EN = {
     "⏰ 截止 {due}": "⏰ Due {due}",
     "找不到待審核項目": "No such pending item",
     "需要存取碼：請在網址後面加上 ?token=你的存取碼": "Access code required: add ?token=YOUR_CODE to the URL",
-    "✅ LifeHub 通知測試成功": "✅ LifeHub notification test OK",
+    "✅ Asa 通知測試成功": "✅ Asa notification test OK",
     "平日": "Weekdays", "週末": "Weekend",
     # 來源與通知的顯示名稱
     "eeClass 教學平台": "eeClass LMS",

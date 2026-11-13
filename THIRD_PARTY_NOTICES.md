@@ -1,6 +1,6 @@
 # Third-party notices
 
-LifeHub itself is released under the MIT License (see `LICENSE`). The files below are adapted from other projects and remain under their original licenses.
+Asa itself is released under the MIT License (see `LICENSE`). The files below are adapted from other projects and remain under their original licenses.
 
 ## React Bits — MIT + Commons Clause
 
@@ -9,7 +9,7 @@ LifeHub itself is released under the MIT License (see `LICENSE`). The files belo
   - `app/static/vendor/aurora.js` — the Aurora background, ported from React/OGL to plain WebGL2 (shader unchanged).
   - `app/static/vendor/borderglow.css`, `app/static/vendor/borderglow.js` — the BorderGlow card (CSS unchanged apart from removing the light variant; pointer tracking rewritten without React).
   - The checkbox in `app/static/app.css` is modelled on the SpringCheck component.
-- The Commons Clause restricts **selling** these components themselves (for example as part of a paid component library). Using them inside an application, as this project does, is allowed. If you redistribute LifeHub commercially, read the React Bits license first.
+- The Commons Clause restricts **selling** these components themselves (for example as part of a paid component library). Using them inside an application, as this project does, is allowed. If you redistribute Asa commercially, read the React Bits license first.
 
 ## Theme Switch — Apache License 2.0
 

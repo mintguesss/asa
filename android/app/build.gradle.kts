@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "tw.lifehub.alarm"
+    namespace = "tw.asa.alarm"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "tw.lifehub.alarm"
+        applicationId = "tw.asa.alarm"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

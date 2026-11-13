@@ -1,12 +1,12 @@
-﻿# LifeHub 鬧鐘 App 一鍵建置
+﻿# Asa 鬧鐘 App 一鍵建置
 # 會下載：JDK 17（Adoptium）、Android 命令列工具（Google）、Gradle 8.9，全部放在同一個資料夾，不會動到系統設定。
 # 過程中 Android SDK 會請你閱讀並同意授權條款（輸入 y）。
-# 因為 Android 建置工具不支援含中文的路徑，所以一律在 D:\lifehub-build（沒有 D 槽就用 C:\lifehub-build）裡建置。
+# 因為 Android 建置工具不支援含中文的路徑，所以一律在 D:\asa-build（沒有 D 槽就用 C:\asa-build）裡建置。
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$base = if (Test-Path 'D:\') { 'D:\lifehub-build' } else { 'C:\lifehub-build' }
+$base = if (Test-Path 'D:\') { 'D:\asa-build' } else { 'C:\asa-build' }
 New-Item -ItemType Directory -Force $base | Out-Null
 Write-Host "建置資料夾：$base" -ForegroundColor Cyan
 
@@ -66,7 +66,7 @@ try {
 } finally { Pop-Location }
 
 $apk = Join-Path $src 'app\build\outputs\apk\debug\app-debug.apk'
-$out = Join-Path $here 'LifeHubAlarm.apk'
+$out = Join-Path $here 'AsaAlarm.apk'
 Copy-Item $apk $out -Force
 Write-Host ''
 Write-Host "完成！APK 在：$out" -ForegroundColor Green

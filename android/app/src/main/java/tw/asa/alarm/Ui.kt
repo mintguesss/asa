@@ -1,4 +1,4 @@
-package tw.lifehub.alarm
+package tw.asa.alarm
 
 import android.content.Context
 import android.graphics.Color

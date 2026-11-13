@@ -1,4 +1,4 @@
-package tw.lifehub.alarm
+package tw.asa.alarm
 
 import android.app.AlarmManager
 import android.app.PendingIntent
@@ -24,7 +24,7 @@ data class AlarmItem(val date: String, val time: String, val label: String) {
 
 /** 本機儲存：伺服器設定、上次同步到的鬧鐘（電腦關機時照樣會響）。 */
 object Store {
-    private fun p(c: Context) = c.getSharedPreferences("lifehub", Context.MODE_PRIVATE)
+    private fun p(c: Context) = c.getSharedPreferences("asa", Context.MODE_PRIVATE)
 
     fun url(c: Context): String = (p(c).getString("url", "") ?: "").trim().trimEnd('/')
     fun token(c: Context): String = (p(c).getString("token", "") ?: "").trim()
@@ -107,8 +107,8 @@ object Api {
 }
 
 object Scheduler {
-    const val ACTION_FIRE = "tw.lifehub.alarm.FIRE"
-    const val ACTION_SYNC = "tw.lifehub.alarm.SYNC"
+    const val ACTION_FIRE = "tw.asa.alarm.FIRE"
+    const val ACTION_SYNC = "tw.asa.alarm.SYNC"
     private const val SYNC_INTERVAL = 30 * 60 * 1000L
     private const val AWAKE_WINDOW = 3 * 60 * 60 * 1000L
     private const val FLAGS = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -118,7 +118,7 @@ object Scheduler {
     private fun firePi(c: Context, item: AlarmItem): PendingIntent {
         val i = Intent(c, AlarmReceiver::class.java)
             .setAction(ACTION_FIRE)
-            .setData(Uri.parse("lifehub://alarm/" + item.key))
+            .setData(Uri.parse("asa://alarm/" + item.key))
             .putExtra("date", item.date).putExtra("time", item.time).putExtra("label", item.label)
         return PendingIntent.getBroadcast(c, 0, i, FLAGS)
     }
@@ -191,7 +191,7 @@ object Scheduler {
         val item = AlarmItem(now.toLocalDate().toString(), now.format(DateTimeFormatter.ofPattern("HH:mm")), "測試鬧鐘")
         val i = Intent(c, AlarmReceiver::class.java)
             .setAction(ACTION_FIRE)
-            .setData(Uri.parse("lifehub://test"))
+            .setData(Uri.parse("asa://test"))
             .putExtra("date", item.date).putExtra("time", item.time).putExtra("label", item.label)
             .putExtra("test", true)
         setExact(c, System.currentTimeMillis() + seconds * 1000L, PendingIntent.getBroadcast(c, 0, i, FLAGS))

@@ -1,4 +1,4 @@
-/* LifeHub 深色主題。極光背景、發光邊框、彈簧勾選框取自 React Bits（見 vendor/）。 */
+/* Asa 深色主題。極光背景、發光邊框、彈簧勾選框取自 React Bits（見 vendor/）。 */
 @property --spin{syntax:"<angle>";initial-value:0deg;inherits:false}
 @property --a1{syntax:"<color>";inherits:true;initial-value:#7c5cff}
 @property --a2{syntax:"<color>";inherits:true;initial-value:#38e1ff}

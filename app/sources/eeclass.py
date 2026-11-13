@@ -22,7 +22,7 @@ LABEL = "eeClass 教學平台"
 ENV = ["EECLASS_URL", "EECLASS_ACCOUNT", "EECLASS_PASSWORD"]
 
 DEBUG_DIR = Path(__file__).resolve().parents[2] / "data" / "eeclass_debug"
-UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LifeHub/1.0"}
+UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Asa/1.0"}
 
 TAG = re.compile(r"<[^>]+>")
 DATE = re.compile(r"(\d{4})[-/](\d{2})[-/](\d{2})(?:\s+(\d{2}):(\d{2}))?")

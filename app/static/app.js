@@ -1,4 +1,4 @@
-/* LifeHub 前端：純 JS，無框架。文字翻譯在 i18n.js。 */
+/* Asa 前端：純 JS，無框架。文字翻譯在 i18n.js。 */
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -136,8 +136,21 @@ const PAL = {
   sunrise: {stops: ['#f97316', '#fb7185', '#fde047'], a: ['#ff8a4c', '#ff9eb5', '#ffe08a'], glow: '25 100 75'},
   rose: {stops: ['#db2777', '#f9a8d4', '#fda4af'], a: ['#f472b6', '#fbb6ce', '#fecdd3'], glow: '330 100 80'},
   gold: {stops: ['#b45309', '#fbbf24', '#fde68a'], a: ['#f5b041', '#fcd34d', '#fef3c7'], glow: '45 100 75'},
+  sakura: {stops: ['#f472b6', '#fbcfe8', '#c4b5fd'], a: ['#f9a8d4', '#fbcfe8', '#ddd6fe'], glow: '320 100 85'},
+  peach: {stops: ['#fb923c', '#fdba74', '#fda4af'], a: ['#ffb088', '#ffd0a8', '#ffc2cc'], glow: '20 100 80'},
+  coral: {stops: ['#ef4444', '#fb7185', '#fdba74'], a: ['#ff6b6b', '#ff9a8b', '#ffc38a'], glow: '8 100 75'},
+  grape: {stops: ['#6d28d9', '#a855f7', '#ec4899'], a: ['#9b6bff', '#c77dff', '#ff7ac8'], glow: '285 100 75'},
+  neon: {stops: ['#f0abfc', '#22d3ee', '#a3e635'], a: ['#ff5cf4', '#2ee6ff', '#b6ff3c'], glow: '300 100 70'},
+  ice: {stops: ['#38bdf8', '#bae6fd', '#e0e7ff'], a: ['#7dd3fc', '#bfe9ff', '#dbe4ff'], glow: '200 100 85'},
+  lagoon: {stops: ['#0d9488', '#22d3ee', '#818cf8'], a: ['#2dd4bf', '#38bdf8', '#93a5ff'], glow: '185 100 72'},
+  forest: {stops: ['#166534', '#4ade80', '#fde047'], a: ['#4ade80', '#86efac', '#eaf27c'], glow: '120 80 70'},
+  matcha: {stops: ['#65a30d', '#bef264', '#fef9c3'], a: ['#a3d977', '#cdeba0', '#f3f0b5'], glow: '85 80 78'},
+  sunset: {stops: ['#7c3aed', '#f43f5e', '#f59e0b'], a: ['#b06bff', '#ff5d7a', '#ffb23e'], glow: '350 100 72'},
+  ember: {stops: ['#b91c1c', '#f97316', '#facc15'], a: ['#ff5a3c', '#ff9838', '#ffd84a'], glow: '18 100 68'},
+  graphite: {stops: ['#475569', '#94a3b8', '#e2e8f0'], a: ['#8a97ad', '#b8c2d4', '#e6ebf3'], glow: '215 30 82'},
 };
-const PAL_NAME = {night: '極光', dawn: '晨曦', day: '海洋', dusk: '晚霞', lilac: '淺紫', mint: '薄荷', sunrise: '日出', rose: '玫瑰', gold: '金色'};
+const PAL_NAME = {night: '極光', dawn: '晨曦', day: '海洋', dusk: '晚霞', lilac: '淺紫', mint: '薄荷', sunrise: '日出', rose: '玫瑰', gold: '金色',
+  sakura: '櫻花', peach: '蜜桃', coral: '珊瑚', grape: '葡萄', neon: '霓虹', ice: '冰川', lagoon: '潟湖', forest: '森林', matcha: '抹茶', sunset: '夕陽', ember: '餘燼', graphite: '石墨'};
 const PAGE = {tasks: 'lilac', inbox: 'mint', alarms: 'sunrise', weekly: 'rose', link: 'gold'};
 const DAYPAL = ['day', 'lilac', 'mint', 'sunrise', 'rose', 'dusk', 'gold'];      // 日檢視：週一到週日各一個顏色（今天則跟著時段）
 const palPref = () => { const v = store.get('pal'); return v === 'random' || PAL[v] ? v : 'auto'; };
