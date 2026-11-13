@@ -1,0 +1,101 @@
+"""後端文字的中英文切換。
+
+程式裡一律寫中文原文：tr("共 {n} 筆", n=3)。語言是英文時，從下面的 EN 查對應的翻譯。
+- 網頁請求：依 X-Lang 標頭（前端的語言切換）。
+- 排程推播：依 .env 的 LIFEHUB_LANG（zh 或 en，預設 zh）。
+要加其他語言，再加一個字典、在 tr() 裡多查一層即可。
+"""
+import contextvars
+import os
+
+_lang: contextvars.ContextVar[str | None] = contextvars.ContextVar("lang", default=None)
+
+WD_ZH = "一二三四五六日"
+WD_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def default() -> str:
+    return "en" if os.getenv("LIFEHUB_LANG", "zh").strip().lower().startswith("en") else "zh"
+
+
+def set_lang(value: str | None) -> None:
+    _lang.set(None if not value else "en" if value.lower().startswith("en") else "zh")
+
+
+def lang() -> str:
+    return _lang.get() or default()
+
+
+def tr(zh: str, **kw) -> str:
+    s = EN.get(zh, zh) if lang() == "en" else zh
+    return s.format(**kw) if kw else s
+
+
+def wd(i: int) -> str:
+    """星期：中文回傳「一」，英文回傳「Mon」。"""
+    return WD_EN[i] if lang() == "en" else WD_ZH[i]
+
+
+def wd_full(i: int) -> str:
+    return WD_EN[i] if lang() == "en" else "週" + WD_ZH[i]
+
+
+EN = {
+    # core：鬧鐘說明
+    "這天沒有適用的鬧鐘規則": "No alarm rule applies to this day",
+    "{time} {title}，提前 {lead} 分鐘開始": "{time} {title}, starting {lead} min before",
+    "固定時間 {time}": "Fixed time {time}",
+    "當天沒有行程，用備用時間 {time}": "Nothing scheduled, using fallback time {time}",
+    "當天沒有行程，不排鬧鐘": "Nothing scheduled, no alarms",
+    "【{rule}】{why}": "[{rule}] {why}",
+    # core：每日簡報
+    "🌙 明日預告": "🌙 Tomorrow",
+    "☀️ 今日簡報": "☀️ Today",
+    "{head}｜{date}（{wd}）": "{head} | {wd} {date}",
+    "放假": "Day off",
+    "⏰ 鬧鐘 {n} 個：{a}～{b}": "⏰ {n} alarms: {a}–{b}",
+    "⏰ 明天沒有排鬧鐘": "⏰ No alarms tomorrow",
+    "📅 行程：": "📅 Schedule: ",
+    "無": "none",
+    "📝 待辦：": "📝 To-do:",
+    "（原訂 {d}）": " (planned {d})",
+    "🗓 本週待辦：": "🗓 This week: ",
+    "、": ", ",
+    "⏳ 七天內截止：": "⏳ Due within 7 days:",
+    "📥 有 {n} 則待審核": "📥 {n} item(s) waiting for review",
+    # insights
+    "資料還不夠（{n}/{need} 個早上），再累積幾天就會有建議。": "Not enough data yet ({n}/{need} mornings).",
+    "最近 {n} 個早上，你通常在第一個鬧鐘後 {delay} 分鐘起床。": "Over the last {n} mornings you usually got up {delay} min after the first alarm. ",
+    "有 {late} 次是最後一個鬧鐘響完才起來，建議多加 {add} 個並提早 {early} 分鐘開始。": "{late} time(s) you got up only after the last alarm; add {add} more and start {early} min earlier.",
+    "多 {add} 個、提早 {early} 分鐘": "{add} more, start {early} min earlier",
+    "有 {early} 次前兩個就起床了，可以減到 {n} 個。": "{early} time(s) you were up within the first two; {n} alarms are enough.",
+    "減到 {n} 個": "Reduce to {n}",
+    "前 {skip} 個幾乎叫不醒你，可以改成晚一點開始、間隔更密（每 {gap} 分鐘）。": "The first {skip} rarely wake you; start later and ring more often (every {gap} min).",
+    "晚 {later} 分鐘開始、每 {gap} 分鐘一個": "Start {later} min later, every {gap} min",
+    "目前的設定跟你的習慣相符，不用調整。": "Your current settings match your habits.",
+    # quick
+    "鬧鐘需要時間，例如「鬧鐘 明天 7:30」": "An alarm needs a time, e.g. \"alarm tomorrow 7:30\"",
+    "每週行程需要時間和名稱，例如「每週二 9:10-12:00 微積分」": "A weekly event needs a time and a name, e.g. \"every tue 9:10-12:00 calculus\"",
+    "看不出要做什麼，請加上名稱": "Please add a name",
+    "無法解析": "Could not understand that",
+    "行程": "Event", "待辦": "To-do", "本週待辦": "This week", "鬧鐘": "Alarm", "固定行程": "Weekly",
+    "截止 {due}": "due {due}",
+    "每週{wd}": "every {wd}",
+    "{date}（{wd}）": "{wd} {date}",
+    # main
+    "沒有這個資料來源：{name}": "Unknown source: {name}",
+    "尚未設定：請在 .env 填 {keys}": "Not configured: set {keys} in .env",
+    "{now} 失敗：{err}": "{now} failed: {err}",
+    "{now} 成功：共 {total} 筆，新增 {new} 筆待審核": "{now} ok: {total} item(s), {new} new for review",
+    "📥 {label} 有 {n} 則新項目待審核": "📥 {label}: {n} new item(s) to review",
+    "📥 待審核：[{tag}] {title}": "📥 To review: [{tag}] {title}",
+    "⏰ 截止 {due}": "⏰ Due {due}",
+    "找不到待審核項目": "No such pending item",
+    "需要存取碼：請在網址後面加上 ?token=你的存取碼": "Access code required: add ?token=YOUR_CODE to the URL",
+    "✅ LifeHub 通知測試成功": "✅ LifeHub notification test OK",
+    "平日": "Weekdays", "週末": "Weekend",
+    # 來源與通知的顯示名稱
+    "eeClass 教學平台": "eeClass LMS",
+    "iCalendar 訂閱（Google 日曆、Moodle、Canvas…）": "iCalendar feeds (Google Calendar, Moodle, Canvas…)",
+    "自訂 Webhook": "Custom webhook",
+}

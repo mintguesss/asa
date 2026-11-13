@@ -1,0 +1,517 @@
+"""LifeHub 主程式：API + 排程 + 網頁介面。"""
+import hmac
+import os
+import secrets
+import socket
+import subprocess
+from contextlib import asynccontextmanager
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from dotenv import load_dotenv
+from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
+
+from . import core, db, i18n, insights, notify, quick, sources
+from .i18n import tr
+
+ROOT = Path(__file__).resolve().parent
+ENV = ROOT.parent / ".env"
+load_dotenv(ENV)
+if not os.getenv("PHONE_TOKEN", "").strip():
+    # 第一次啟動：自動產生手機用的存取碼並寫進 .env
+    _tok = "-".join(secrets.token_hex(2) for _ in range(3))
+    with ENV.open("a", encoding="utf-8") as _f:
+        _f.write(f"\nPHONE_TOKEN={_tok}\n")
+    os.environ["PHONE_TOKEN"] = _tok
+
+
+def today() -> str:
+    return date.today().isoformat()
+
+
+def tomorrow() -> str:
+    return (date.today() + timedelta(days=1)).isoformat()
+
+
+def pick(body: dict, fields: list[str]) -> dict:
+    return {k: body[k] for k in fields if k in body}
+
+
+def refresh_tomorrow() -> None:
+    """行程或規則有變動時，重排明天的自動鬧鐘。"""
+    core.regenerate_plan(tomorrow())
+
+
+# ---------- 排程工作 ----------
+def job_evening() -> None:
+    d = tomorrow()
+    core.regenerate_plan(d)
+    notify.send(core.brief_text(d, "evening"))
+
+
+def job_morning() -> None:
+    notify.send(core.brief_text(today(), "morning"))
+
+
+def inbox_add(data: dict, silent: bool = False) -> int | None:
+    """放進待審核佇列；ext_id 重複就略過。回傳新 id 或 None。"""
+    if data.get("ext_id") and db.one("SELECT 1 FROM inbox WHERE ext_id = ?", (data["ext_id"],)):
+        return None
+    id_ = db.insert("inbox", data)
+    if not silent:
+        due = "\n" + tr("⏰ 截止 {due}", due=data["due"].replace("T", " ")) if data.get("due") else ""
+        notify.send(tr("📥 待審核：[{tag}] {title}", tag=data.get("course") or data["kind"], title=data["title"])
+                    + f"{due}\n{data.get('link', '')}")
+    return id_
+
+
+def job_source(name: str) -> dict:
+    """執行一個資料來源。已過期的項目只記錄不進佇列；第一次執行時沒有日期的舊項目也一樣，避免洗版。"""
+    mod = sources.BY_NAME.get(name)
+    if not mod:
+        return {"ok": False, "message": tr("沒有這個資料來源：{name}", name=name)}
+    if not mod.configured():
+        return {"ok": False, "message": tr("尚未設定：請在 .env 填 {keys}", keys=", ".join(mod.ENV))}
+    now = datetime.now().isoformat(timespec="minutes")
+    try:
+        items = mod.collect()
+    except Exception as e:  # noqa: BLE001
+        db.kv_set(f"src_{name}_last", tr("{now} 失敗：{err}", now=now, err=e))
+        return {"ok": False, "message": str(e)}
+    first = db.kv_get(f"src_{name}_seeded") is None
+    new = []
+    for it in items:
+        old = (it.get("due") and it["due"] < now) or (first and not it.get("due"))
+        id_ = inbox_add(pick(it, INBOX_F), silent=True)
+        if id_ and old:
+            db.update("inbox", id_, {"status": "rejected"})
+        elif id_:
+            new.append(it)
+    db.kv_set(f"src_{name}_seeded", "1")
+    db.kv_set(f"src_{name}_last", tr("{now} 成功：共 {total} 筆，新增 {new} 筆待審核", now=now, total=len(items), new=len(new)))
+    if new:
+        lines = [tr("📥 {label} 有 {n} 則新項目待審核", label=tr(mod.LABEL), n=len(new))]
+        lines += [f"  {'[' + i['course'] + '] ' if i.get('course') else ''}{i['title']}"
+                  + (f"（{i['due'][5:].replace('T', ' ')}）" if i.get("due") else "") for i in new[:10]]
+        notify.send("\n".join(lines))
+    return {"ok": True, "total": len(items), "new": len(new)}
+
+
+def job_sources() -> None:
+    for mod in sources.ALL:
+        if mod.configured():
+            job_source(mod.NAME)
+
+
+def hm(env: str, default: str) -> tuple[int, int]:
+    h, m = os.getenv(env, default).split(":")
+    return int(h), int(m)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    db.init()
+    if not db.rows("SELECT 1 FROM alarm_rules LIMIT 1"):
+        db.insert("alarm_rules", {"name": tr("平日"), "weekdays": "0,1,2,3,4", "anchor": "first_event",
+                                  "lead_minutes": 90, "count": 8, "interval_minutes": 5})
+        db.insert("alarm_rules", {"name": tr("週末"), "weekdays": "5,6", "anchor": "first_event",
+                                  "lead_minutes": 90, "count": 4, "interval_minutes": 10})
+    if not core.plan(tomorrow()):
+        core.regenerate_plan(tomorrow())
+    sched = BackgroundScheduler()
+    eh, em = hm("EVENING_TIME", "21:30")
+    mh, mm = hm("MORNING_TIME", "08:00")
+    sched.add_job(job_evening, "cron", hour=eh, minute=em)
+    sched.add_job(job_morning, "cron", hour=mh, minute=mm)
+    if any(m.configured() for m in sources.ALL):
+        sched.add_job(job_sources, "interval", minutes=int(os.getenv("SYNC_INTERVAL_MINUTES", "30")),
+                      next_run_time=datetime.now() + timedelta(seconds=20))
+    sched.start()
+    yield
+    sched.shutdown(wait=False)
+
+
+app = FastAPI(title="LifeHub", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+
+
+@app.middleware("http")
+async def guard(request: Request, call_next):
+    """本機直接放行；其他裝置（手機）要帶存取碼。"""
+    host = request.client.host if request.client else ""
+    i18n.set_lang(request.headers.get("x-lang"))
+    if host in ("127.0.0.1", "::1", "testclient"):
+        return await call_next(request)
+    given = (request.headers.get("x-token") or request.query_params.get("token")
+             or request.cookies.get("lh_token") or "")
+    if not hmac.compare_digest(given.encode(), os.environ["PHONE_TOKEN"].encode()):
+        return PlainTextResponse(tr("需要存取碼：請在網址後面加上 ?token=你的存取碼"), status_code=401)
+    resp = await call_next(request)
+    if request.query_params.get("token"):
+        resp.set_cookie("lh_token", given, max_age=31536000, httponly=True, samesite="lax")
+    return resp
+
+
+@app.get("/")
+def index():
+    return FileResponse(ROOT / "static" / "index.html")
+
+
+# ---------- 總覽 ----------
+@app.get("/api/day")
+def api_day(d: str | None = None):
+    return core.day_summary(d or today())
+
+
+@app.get("/api/week")
+def api_week(d: str | None = None):
+    mon = date.fromisoformat(core.week_monday(d or today()))
+    return [core.day_summary((mon + timedelta(days=i)).isoformat()) for i in range(7)]
+
+
+@app.get("/api/month")
+def api_month(d: str | None = None):
+    """月曆：從當月 1 號所在那週的週一開始，固定 6 週 42 格。"""
+    first = date.fromisoformat(d or today()).replace(day=1)
+    start = first - timedelta(days=first.weekday())
+    out = []
+    for i in range(42):
+        day = (start + timedelta(days=i)).isoformat()
+        evs = core.events_on(day)
+        on = [a["time"] for a in core.plan(day) if a["enabled"]]
+        out.append({
+            "date": day, "in_month": day[:7] == first.isoformat()[:7],
+            "skip": bool(db.one("SELECT 1 FROM skip_dates WHERE date = ?", (day,))),
+            "events": [{"time": e["time"], "title": e["title"]} for e in evs if not e["title"].startswith("⏰")],
+            "due": [t["title"] for t in db.rows("SELECT title FROM tasks WHERE done=0 AND substr(due,1,10)=?", (day,))],
+            "tasks": db.one("SELECT COUNT(*) n FROM tasks WHERE done=0 AND scope='day' AND plan_date=?", (day,))["n"],
+            "alarm": on[0] if on else None, "alarms": len(on),
+        })
+    return {"month": first.isoformat()[:7], "days": out}
+
+
+# ---------- 行程 ----------
+EVENT_F = ["title", "start", "end", "location", "note", "wake"]
+WEEKLY_F = ["title", "weekday", "start_time", "end_time", "location", "wake"]
+
+
+@app.post("/api/events")
+def add_event(body: dict = Body(...)):
+    id_ = db.insert("events", pick(body, EVENT_F))
+    refresh_tomorrow()
+    return {"id": id_}
+
+
+@app.delete("/api/events/{id_}")
+def del_event(id_: int):
+    db.run("DELETE FROM events WHERE id = ?", (id_,))
+    refresh_tomorrow()
+    return {"ok": True}
+
+
+@app.get("/api/weekly")
+def list_weekly():
+    return db.rows("SELECT * FROM weekly_events ORDER BY weekday, start_time")
+
+
+@app.post("/api/weekly")
+def add_weekly(body: dict = Body(...)):
+    id_ = db.insert("weekly_events", pick(body, WEEKLY_F))
+    refresh_tomorrow()
+    return {"id": id_}
+
+
+@app.delete("/api/weekly/{id_}")
+def del_weekly(id_: int):
+    db.run("DELETE FROM weekly_events WHERE id = ?", (id_,))
+    refresh_tomorrow()
+    return {"ok": True}
+
+
+@app.post("/api/skip")
+def add_skip(body: dict = Body(...)):
+    db.run("INSERT OR REPLACE INTO skip_dates (date, reason) VALUES (?, ?)",
+           (body["date"], body.get("reason", "")))
+    core.regenerate_plan(body["date"])
+    return {"ok": True}
+
+
+@app.delete("/api/skip/{d}")
+def del_skip(d: str):
+    db.run("DELETE FROM skip_dates WHERE date = ?", (d,))
+    core.regenerate_plan(d)
+    return {"ok": True}
+
+
+# ---------- 待辦 ----------
+TASK_F = ["title", "scope", "plan_date", "due", "est_minutes", "link", "done"]
+
+
+@app.get("/api/tasks")
+def list_tasks(include_done: bool = False):
+    where = "" if include_done else "WHERE done = 0"
+    return db.rows(f"SELECT * FROM tasks {where} ORDER BY COALESCE(plan_date, substr(due,1,10), '9999'), due")
+
+
+@app.post("/api/tasks")
+def add_task(body: dict = Body(...)):
+    data = pick(body, TASK_F)
+    data.setdefault("scope", "day")
+    data.setdefault("plan_date", today())
+    if data["scope"] == "week":
+        data["plan_date"] = core.week_monday(data["plan_date"])
+    return {"id": db.insert("tasks", data)}
+
+
+@app.patch("/api/tasks/{id_}")
+def edit_task(id_: int, body: dict = Body(...)):
+    data = pick(body, TASK_F)
+    if "done" in data:
+        data["done_at"] = datetime.now().isoformat(timespec="minutes") if data["done"] else None
+    db.update("tasks", id_, data)
+    return {"ok": True}
+
+
+@app.delete("/api/tasks/{id_}")
+def del_task(id_: int):
+    db.run("DELETE FROM tasks WHERE id = ?", (id_,))
+    return {"ok": True}
+
+
+# ---------- 待審核佇列 ----------
+INBOX_F = ["ext_id", "kind", "title", "course", "due", "end", "location", "link", "body", "source"]
+
+
+@app.get("/api/inbox")
+def list_inbox(status: str = "pending"):
+    return db.rows("SELECT * FROM inbox WHERE status = ? ORDER BY created DESC", (status,))
+
+
+@app.post("/api/inbox")
+def add_inbox(body: dict = Body(...)):
+    """任何外部程式都能把新項目丟進來（格式見 app/sources/__init__.py）；ext_id 重複會略過。"""
+    id_ = inbox_add(pick(body, INBOX_F))
+    return {"id": id_} if id_ else {"duplicate": True}
+
+
+@app.post("/api/inbox/{id_}/approve")
+def approve_inbox(id_: int, body: dict = Body(default={})):
+    """核准。kind=event → 建立行程；其他 → 建立待辦，有截止時間的話同時在行事曆放一個截止標記。
+    可用 body 覆寫 title/due/plan_date。"""
+    it = db.one("SELECT * FROM inbox WHERE id = ?", (id_,))
+    if not it or it["status"] != "pending":
+        raise HTTPException(404, tr("找不到待審核項目"))
+    title = body.get("title") or (f"[{it['course']}] {it['title']}" if it["course"] else it["title"])
+    due = body.get("due") or it["due"]
+    out = {}
+    if it["kind"] == "event":
+        allday = bool(due) and due[11:16] == "00:00" and not it["end"]
+        out["event_id"] = db.insert("events", {
+            "title": title, "start": due or today() + "T09:00", "end": it["end"], "location": it["location"] or "",
+            "note": it["link"] or "", "source": it["source"], "wake": 0 if allday else 1})
+        db.update("inbox", id_, {"status": "approved"})
+        refresh_tomorrow()
+        return out
+    if it["kind"] != "announcement" or body.get("as_task"):
+        out["task_id"] = db.insert("tasks", {
+            "title": title, "scope": "day", "due": due, "link": it["link"], "source": it["source"],
+            "plan_date": body.get("plan_date") or (due[:10] if due else today()),
+            "est_minutes": body.get("est_minutes"),
+        })
+    if due:
+        out["event_id"] = db.insert("events", {
+            "title": f"⏰ 截止：{title}", "start": due, "source": it["source"], "wake": 0})
+    db.update("inbox", id_, {"status": "approved"})
+    return out
+
+
+@app.post("/api/inbox/{id_}/reject")
+def reject_inbox(id_: int):
+    db.update("inbox", id_, {"status": "rejected"})
+    return {"ok": True}
+
+
+# ---------- 鬧鐘 ----------
+RULE_F = ["name", "weekdays", "anchor", "lead_minutes", "fixed_time", "count", "interval_minutes", "enabled"]
+
+
+@app.get("/api/alarms/rules")
+def list_rules():
+    return db.rows("SELECT * FROM alarm_rules ORDER BY id")
+
+
+@app.post("/api/alarms/rules")
+def add_rule(body: dict = Body(...)):
+    id_ = db.insert("alarm_rules", pick(body, RULE_F))
+    refresh_tomorrow()
+    return {"id": id_}
+
+
+@app.patch("/api/alarms/rules/{id_}")
+def edit_rule(id_: int, body: dict = Body(...)):
+    db.update("alarm_rules", id_, pick(body, RULE_F))
+    refresh_tomorrow()
+    return {"ok": True}
+
+
+@app.delete("/api/alarms/rules/{id_}")
+def del_rule(id_: int):
+    db.run("DELETE FROM alarm_rules WHERE id = ?", (id_,))
+    refresh_tomorrow()
+    return {"ok": True}
+
+
+@app.get("/api/alarms/plan")
+def get_plan(d: str | None = None):
+    d = d or tomorrow()
+    return {"date": d, "preview_reason": core.compute_alarms(d)[1], "alarms": core.plan(d)}
+
+
+@app.post("/api/alarms/plan/regenerate")
+def regen(d: str | None = None):
+    return core.regenerate_plan(d or tomorrow())
+
+
+@app.post("/api/alarms/plan")
+def add_alarm(body: dict = Body(...)):
+    db.run("INSERT OR REPLACE INTO alarm_plan (date, time, label, source) VALUES (?,?,?,'manual')",
+           (body["date"], body["time"], body.get("label", "")))
+    return {"ok": True}
+
+
+@app.patch("/api/alarms/plan/{id_}")
+def toggle_alarm(id_: int, body: dict = Body(...)):
+    db.update("alarm_plan", id_, pick(body, ["enabled", "time", "label"]))
+    return {"ok": True}
+
+
+@app.delete("/api/alarms/plan/{id_}")
+def del_alarm(id_: int):
+    db.run("DELETE FROM alarm_plan WHERE id = ?", (id_,))
+    return {"ok": True}
+
+
+# ---------- 手機端（存取碼由 guard 檢查）----------
+@app.get("/api/phone/alarms")
+def phone_alarms():
+    """手機抓取：今天還沒到的 + 明天的所有啟用鬧鐘。"""
+    now = datetime.now()
+    hm_now = now.strftime("%H:%M")
+    out = [a for a in core.plan(today()) if a["enabled"] and a["time"] > hm_now]
+    out += [a for a in core.plan(tomorrow()) if a["enabled"]]
+    db.kv_set("phone_last_sync", now.isoformat(timespec="minutes"))
+    return {"server_time": now.isoformat(timespec="seconds"),
+            "alarms": [{"date": a["date"], "time": a["time"], "label": a["label"] or "起床"} for a in out]}
+
+
+@app.post("/api/phone/log")
+def phone_log(body: dict = Body(...)):
+    """手機回報鬧鐘事件（fired / dismissed / awake），用來學習習慣。"""
+    data = {"date": body.get("date") or today(), "time": body.get("time"), "action": body["action"]}
+    if body.get("ts"):
+        data["ts"] = body["ts"]
+    db.insert("alarm_log", data)
+    return {"ok": True}
+
+
+# ---------- 快速輸入 ----------
+@app.post("/api/quick")
+def quick_add(body: dict = Body(...)):
+    """body: {text, dry}。dry=true 只回傳解析結果，不建立。"""
+    p = quick.parse(body.get("text", ""))
+    p["summary"] = quick.describe(p)
+    if body.get("dry") or p["type"] == "error":
+        return p
+    if p["type"] == "event":
+        db.insert("events", pick(p, EVENT_F))
+        refresh_tomorrow()
+    elif p["type"] == "task":
+        add_task(p)
+    elif p["type"] == "alarm":
+        add_alarm(p)
+    elif p["type"] == "weekly":
+        db.insert("weekly_events", pick(p, WEEKLY_F))
+        refresh_tomorrow()
+    p["created"] = True
+    return p
+
+
+# ---------- 洞察 ----------
+@app.get("/api/pressure")
+def pressure(days: int = 14):
+    """未來 N 天每天的負擔：行程數、要做的待辦、截止數。"""
+    out = []
+    for i in range(days):
+        d = (date.today() + timedelta(days=i)).isoformat()
+        out.append({
+            "date": d, "weekday": date.fromisoformat(d).weekday(),
+            "events": len([e for e in core.events_on(d) if not e["title"].startswith("⏰")]),
+            "tasks": db.one("SELECT COUNT(*) n FROM tasks WHERE done=0 AND scope='day' AND plan_date=?", (d,))["n"],
+            "due": [t["title"] for t in db.rows(
+                "SELECT title FROM tasks WHERE done=0 AND substr(due,1,10)=?", (d,))],
+        })
+    return out
+
+
+@app.get("/api/alarms/insights")
+def alarm_insights():
+    return {"mornings": insights.mornings(14), "suggestions": insights.suggestions()}
+
+
+def server_urls() -> list[str]:
+    """手機可以用來連這台電腦的網址（依優先順序）。"""
+    port = os.getenv("PORT", "8787")
+    if os.getenv("PUBLIC_URL", "").strip():
+        return [os.environ["PUBLIC_URL"].strip().rstrip("/")]
+    ips = []
+    try:
+        ips.append(subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True,
+                                  timeout=5).stdout.strip().splitlines()[0])
+    except Exception:  # noqa: BLE001  沒裝 Tailscale
+        pass
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sk:
+            sk.connect(("10.255.255.255", 1))       # 不會真的送封包，只是問系統會走哪個網卡
+            ips.append(sk.getsockname()[0])
+    except Exception:  # noqa: BLE001
+        pass
+    return [f"http://{ip}:{port}" for ip in dict.fromkeys(ips) if ip]
+
+
+@app.get("/api/status")
+def status():
+    return {
+        "channels": [c | {"label": tr(c["label"])} for c in notify.channels()], "lang": i18n.default(),
+        "sources": [{"name": m.NAME, "label": tr(m.LABEL), "env": m.ENV, "configured": m.configured(),
+                     "last": db.kv_get(f"src_{m.NAME}_last")} for m in sources.ALL],
+        "sync_minutes": int(os.getenv("SYNC_INTERVAL_MINUTES", "30")),
+        "phone_last_sync": db.kv_get("phone_last_sync"),
+        "phone_token": os.environ["PHONE_TOKEN"], "urls": server_urls(),
+        "evening": os.getenv("EVENING_TIME", "21:30"), "morning": os.getenv("MORNING_TIME", "08:00"),
+    }
+
+
+@app.post("/api/sources/{name}/run")
+def source_run(name: str):
+    return job_source(name)
+
+
+# ---------- 通知 ----------
+@app.post("/api/notify/test")
+def notify_test():
+    return notify.send(tr("✅ LifeHub 通知測試成功"))
+
+
+@app.post("/api/notify/brief")
+def notify_brief(kind: str = "evening"):
+    d = tomorrow() if kind == "evening" else today()
+    text = core.brief_text(d, kind)
+    return {"text": text, "result": notify.send(text)}
+
+
+@app.get("/api/brief")
+def brief(kind: str = "evening"):
+    return {"text": core.brief_text(tomorrow() if kind == "evening" else today(), kind)}
