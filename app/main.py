@@ -14,7 +14,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import core, db, demo, i18n, insights, notify, quick, sources
+from . import closures, core, db, demo, i18n, insights, notify, quick, sources
 from .i18n import tr
 
 ROOT = Path(__file__).resolve().parent
@@ -156,6 +156,10 @@ async def lifespan(_: FastAPI):
     mh, mm = hm("MORNING_TIME", "08:00")
     sched.add_job(job_evening, "cron", hour=eh, minute=em)
     sched.add_job(job_morning, "cron", hour=mh, minute=mm)
+    if closures.configured():
+        # 停班停課：前一晚 19–22 點陸續公告，也可能凌晨才宣布，所以晚上和清晨各查幾次
+        sched.add_job(closures.job, "cron", hour="19-23", minute="5,35", args=[1])
+        sched.add_job(closures.job, "cron", hour="0-7", minute="10,40", args=[0])
     if any(m.configured() for m in sources.ALL):
         sched.add_job(job_sources, "interval", minutes=int(os.getenv("SYNC_INTERVAL_MINUTES", "30")),
                       next_run_time=datetime.now() + timedelta(seconds=20))
@@ -528,6 +532,7 @@ def status():
                      "last": db.kv_get(f"src_{m.NAME}_last")} for m in sources.ALL],
         "sync_minutes": int(os.getenv("SYNC_INTERVAL_MINUTES", "30")),
         "phone_last_sync": db.kv_get("phone_last_sync"),
+        "closure": {"area": closures.area(), "last": db.kv_get("closure_last")},
         "phone_token": os.environ["PHONE_TOKEN"], "urls": server_urls(),
         "evening": os.getenv("EVENING_TIME", "21:30"), "morning": os.getenv("MORNING_TIME", "08:00"),
     }

@@ -24,7 +24,7 @@
 
 **先用範例資料試玩**：啟動前設 `ASA_DEMO=1`（Windows：`set ASA_DEMO=1 && run.bat`；macOS / Linux：`ASA_DEMO=1 ./run.sh`）。會用獨立的 `data/demo.db`，不會動到你的資料，也不會發通知。
 
-**Docker**：`cp .env.example .env` 之後 `docker compose up -d`，時區在 `docker-compose.yml` 裡改；開 `http://localhost:8787/?token=<.env 裡的 PHONE_TOKEN>`。（Docker 映像檔還沒實際建置驗證過。）
+**Docker**：`cp .env.example .env` 之後 `docker compose up -d`，時區在 `docker-compose.yml` 裡改；開 `http://localhost:8787/?token=<.env 裡的 PHONE_TOKEN>`。
 
 ## 網頁版
 
@@ -61,7 +61,7 @@ App 每 30 分鐘同步一次，鬧鐘存在手機上，電腦關機或沒網路
 
 App 介面跟著手機語言：中文顯示中文，其他語言顯示英文。
 
-> App 的程式碼還沒有實際編譯驗證過。
+> App 可以成功編譯；各家手機的省電機制不同，裝好後請先用測試鬧鐘確認會響。
 
 ## 資料來源
 
@@ -71,6 +71,15 @@ App 介面跟著手機語言：中文顯示中文，其他語言顯示英文。
 - **eeClass**：填 `EECLASS_URL`（你學校的 eeClass 網址）、`EECLASS_ACCOUNT`、`EECLASS_PASSWORD`。這個來源還沒用真實帳號驗證過，請先執行 `python -m app.sources.eeclass --debug` 看抓到什麼。
 - **不想每筆都審核**：`AUTO_APPROVE=ics`（或 `ics,eeclass`）會讓那個來源的新項目直接加進行事曆／待辦，公告仍然要審核。
 - **其他系統**：直接 `POST /api/inbox`，或在 `app/sources/` 加一個模組（格式寫在 `app/sources/__init__.py`）。
+
+## 停班停課自動放假
+
+`.env` 填 `CLOSURE_AREA=桃園市`（你的縣市），Asa 會在晚上和清晨定時查行政院人事行政總處的公告。宣布停課時自動把那天標成放假、取消鬧鐘並推播通知。
+
+- 只認整個縣市的公告；只有部分區、里停課，或下午才停課，都不會自動放假。
+- 預設看「停止上課」，上班族改 `CLOSURE_MATCH=上班`。
+- 判斷錯了的話，到日曆把那天的放假取消，鬧鐘就會恢復。
+- 這個功能目前只用「沒有公告」的真實頁面和模擬的公告測試過，還沒遇過真的颱風假。
 
 ## 通知
 

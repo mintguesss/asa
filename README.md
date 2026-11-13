@@ -22,6 +22,7 @@ ASA_DEMO=1 ./run.sh        # Windows: set ASA_DEMO=1 && run.bat
 - **Android companion app** — rings on its own (no internet needed once synced), full-screen on the lock screen, rising volume, a maths question before "I'm up", reports wake-up times back.
 - **Habit learning** — after a few mornings it suggests rule changes ("you sleep through the first 3, start later and ring more often").
 - **Calendar** — day / week / month views, weekly recurring events, days off.
+- **Typhoon days (Taiwan)** — set `CLOSURE_AREA` and Asa watches the government closure notices; when classes are cancelled it marks the day off, drops the alarms and tells you.
 - **To-dos** — per day and per week, deadlines shown on the calendar, a 14-day load chart.
 - **One-line input** (`Ctrl+K`) — `tomorrow 3pm meeting @room 5`, `report by fri`, `alarm tomorrow 7:30`, `every tue 9:10-12:00 calculus` (English or Chinese).
 - **Looks** — animated aurora background, 21 colour palettes (one per page, pick one, or random), light/dark toggle, phone-friendly layout.
@@ -79,7 +80,7 @@ FastAPI · SQLite · APScheduler · vanilla JS/CSS (no build step).
 
 ## Status
 
-Early. The eeClass source, the Android app (English / 中文) and the Docker image have not been verified end-to-end yet — issues and PRs welcome.
+Early. The Android app builds, and the Docker image builds and starts, but the app has not been tested on many devices. The eeClass source has not been verified against a real account, and the closure detection has only been tested against the page's no-closure state plus simulated notices — issues and PRs welcome.
 
 ## Credits
 

@@ -93,6 +93,9 @@ EN = {
     "找不到待審核項目": "No such pending item",
     "需要存取碼：請在網址後面加上 ?token=你的存取碼": "Access code required: add ?token=YOUR_CODE to the URL",
     "起床": "Wake up",
+    "停班停課（自動偵測）": "Closure (detected automatically)",
+    "🌀 {area} {notice}\n已把 {date} 標成放假並重排鬧鐘。如果判斷錯了，到日曆把這天的放假取消就會恢復。":
+        "🌀 {area}: {notice}\n{date} is now marked as a day off and the alarms were re-planned. If this is wrong, remove the day off in the calendar.",
     "👉 審核：{url}": "👉 Review: {url}",
     "{now} 成功：共 {total} 筆，自動加入 {new} 筆": "{now} OK: {total} items, {new} added automatically",
     "✅ {label} 自動加入 {n} 則新項目": "✅ {label}: {n} new items added automatically",
