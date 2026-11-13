@@ -32,6 +32,15 @@ function toast(msg) {
   document.body.append(el); setTimeout(() => el.remove(), 2600);
 }
 const act = async (path, method, body, msg) => { await api(path, method, body); if (msg) toast(msg); render(); };
+
+/* ---------- 成員：只有一個人用的時候 P.multi 是 false，下面這些都不會出現 ---------- */
+let P = {me: {id: 1, name: '', alarm_mode: 'app'}, multi: false, local: true, admin: true, list: []};
+const loadP = async () => { P = await api('/profiles'); };
+const pact = async (path, method, body, msg) => { await api(path, method, body); await loadP(); if (msg) toast(msg); render(); };
+const own = x => x.owner ? '?owner=' + x.owner : '';                       // 別人共用給我的那一筆，要註明是誰的
+const duo = x => P.multi && (x.owner || x.shared) ? '👥 ' : '';
+const who = x => P.multi && (x.owner || x.shared) ? `<span class="pill duo">👥${x.owner_name ? ' ' + esc(x.owner_name) : ''}</span>` : '';
+const shareBox = () => P.multi ? `<label class="share" title="${t('其他成員也看得到')}"><input type="checkbox" name="shared"><span>👥 ${t('一起')}</span></label>` : '';
 const formData = f => Object.fromEntries([...new FormData(f)].filter(([, v]) => v !== ''));
 
 /* ---------- 導覽 ---------- */
@@ -47,9 +56,9 @@ const NAV = [['cal', '日曆'], ['tasks', '待辦'], ['inbox', '審核'], ['alar
 const CAL = [['day', '日'], ['week', '週'], ['month', '月']];
 const isCal = v => CAL.some(([k]) => k === v);
 function drawRail() {
-  $('#rail').innerHTML = NAV.map(([k, v]) => {
+  $('#rail').innerHTML = NAV.filter(([k]) => k !== 'alarms' || P.me.alarm_mode !== 'off').map(([k, v]) => {
     const on = k === 'cal' ? isCal(S.view) : S.view === k;
-    return `<button class="nav ${on ? 'on' : ''}" onclick="go('${k === 'cal' ? S.cal : k}')"><svg viewBox="0 0 24 24">${ICON[k]}</svg><span>${t(v)}</span>${k === 'inbox' && S.inbox ? `<span class="dot">${S.inbox}</span>` : ''}</button>`;
+    return `<button class="nav ${on ? 'on' : ''}" onclick="go('${k === 'cal' ? S.cal : k}')"><svg viewBox="0 0 24 24">${ICON[k]}</svg><span>${k === 'link' && P.multi ? esc(P.me.name) : t(v)}</span>${k === 'inbox' && S.inbox ? `<span class="dot">${S.inbox}</span>` : ''}</button>`;
   }).join('');
 }
 function go(v, d) {
@@ -80,10 +89,10 @@ function taskRow(x, extra = '') {
   const due = x.due ? `<span class="pill ${x.due.slice(0, 10) <= TODAY() && !x.done ? 'red' : ''}">${t('截止 {0}', md(x.due) + ' ' + x.due.slice(11, 16))}</span>` : '';
   const title = x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title)}</a>` : esc(x.title);
   return `<div class="task ${x.done ? 'done' : ''} ${S.pop === x.id ? 'pop' : ''}">
-    <button class="chk ${x.done ? 'on' : ''}" onclick="S.pop=${x.done ? 'null' : x.id};act('/tasks/${x.id}','PATCH',{done:${x.done ? 0 : 1}})" aria-label="${t('完成')}">
+    <button class="chk ${x.done ? 'on' : ''}" onclick="S.pop=${x.done ? 'null' : x.id};act('/tasks/${x.id}${own(x)}','PATCH',{done:${x.done ? 0 : 1}})" aria-label="${t('完成')}">
       <span class="ring"></span><span class="fill"></span><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" pathLength="1"/></svg></button>
-    <div class="body"><span class="tt">${title}</span>${due || extra ? `<div class="meta">${due}${extra}</div>` : ''}</div>
-    <button class="x" onclick="act('/tasks/${x.id}','DELETE')" aria-label="${t('刪除')}">✕</button></div>`;
+    <div class="body"><span class="tt">${title}</span>${due || extra || who(x) ? `<div class="meta">${due}${extra}${who(x)}</div>` : ''}</div>
+    <button class="x" onclick="act('/tasks/${x.id}${own(x)}','DELETE')" aria-label="${t('刪除')}">✕</button></div>`;
 }
 
 /* 時間軸（桌機）：events = [{time,end_time,title,location,source,id}] */
@@ -103,8 +112,8 @@ function timeline(events, {start, end, pxm = 0.8, alarms = [], now = null, compa
   for (const b of blocks) {
     const height = Math.max(compact ? 20 : 30, (b.e - b.s) * pxm - 3);
     h += `<div class="ev ${b.source === 'weekly' ? 'weekly' : ''}" style="top:${top(b.s)}px;height:${height}px;left:calc(${b.lane * 100 / n}% + 2px);width:calc(${100 / n}% - 4px)" title="${esc(b.time)} ${esc(b.title)}">
-      <b>${esc(b.title)}</b>${compact ? '' : `<span class="num">${esc(b.time)}${b.end_time ? '–' + esc(b.end_time) : ''}</span>${b.location ? ' · ' + esc(b.location) : ''}${b.source === 'weekly' ? ' · ' + t('每週') : ''}`}
-      ${b.id && !compact ? `<button class="x" onclick="act('/events/${b.id}','DELETE')">✕</button>` : ''}</div>`;
+      <b>${duo(b)}${esc(b.title)}</b>${compact ? '' : `<span class="num">${esc(b.time)}${b.end_time ? '–' + esc(b.end_time) : ''}</span>${b.location ? ' · ' + esc(b.location) : ''}${b.source === 'weekly' ? ' · ' + t('每週') : ''}`}
+      ${b.id && !compact ? `<button class="x" onclick="act('/events/${b.id}${own(b)}','DELETE')">✕</button>` : ''}</div>`;
   }
   for (const e of events.filter(isDeadline))
     h += `<div class="flag" style="top:${top(Math.min(mins(e.time), end))}px"><span>${esc(flagText(e))}</span></div>`;
@@ -125,7 +134,7 @@ function agenda(events, {del = false, now = null} = {}) {
   return `<div class="agenda">${events.map(e => isDeadline(e)
     ? `<div class="ag due"><i class="num">${esc(e.time)}</i><b>${esc(flagText(e))}</b></div>`
     : `<div class="ag ${e.source === 'weekly' ? 'weekly' : ''} ${now !== null && (e.end_time ? mins(e.end_time) : mins(e.time) + 50) < now ? 'past' : ''}"><i class="num">${esc(e.time)}${e.end_time ? `<s>${esc(e.end_time)}</s>` : ''}</i>
-        <b>${esc(e.title)}${e.location ? `<em>${esc(e.location)}</em>` : ''}</b>${del && e.id ? `<button class="x" onclick="act('/events/${e.id}','DELETE')">✕</button>` : ''}</div>`).join('')}</div>`;
+        <b>${duo(e)}${esc(e.title)}${e.location ? `<em>${esc(e.location)}</em>` : ''}</b>${del && e.id ? `<button class="x" onclick="act('/events/${e.id}${own(e)}','DELETE')">✕</button>` : ''}</div>`).join('')}</div>`;
 }
 
 /* ---------- 色系：日曆跟著時段，其他每頁一個顏色 ---------- */
@@ -212,6 +221,7 @@ function toggleTheme() {
 
 /* ---------- 日 ---------- */
 function runway(s) {
+  if (P.me.alarm_mode === 'off') return '';
   const al = s.alarms, on = al.filter(a => a.enabled);
   const anchor = s.events.find(e => e.wake && !isDeadline(e) && (!al.length || mins(e.time) > mins(al[0].time)));
   const addBtn = `<button class="hb" onclick="const v=prompt('${t('加一個鬧鐘（HH:MM）')}','07:00');if(v)act('/alarms/plan','POST',{date:'${s.date}',time:v.padStart(5,'0')})">＋</button>
@@ -239,14 +249,21 @@ function saying(s) {
   if (x.overdue.length) parts.push(t('{0} 項逾期', x.overdue.length));
   return parts.map(esc).join('　·　');
 }
+function othersCard(s) {
+  return (s.others || []).map(o => `<div class="card other"><h3><i class="pdot" style="background:${esc(o.color)}"></i>${esc(o.name)}
+      ${o.alarm ? `<span class="r muted num" title="${t('第一個鬧鐘')}">⏰ ${esc(o.alarm)}</span>` : ''}</h3>
+    ${o.events.length ? `<div class="agenda">${o.events.map(e => `<div class="ag"><i class="num">${esc(e.time)}${e.end_time ? `<s>${esc(e.end_time)}</s>` : ''}</i>
+      <b>${e.title === null ? `<span class="muted">${t('有事')}</span>` : esc(e.title)}${e.location ? `<em>${esc(e.location)}</em>` : ''}</b></div>`).join('')}</div>`
+      : `<div class="empty">${t('這天沒有行程')}</div>`}</div>`).join('');
+}
 const VIEW = {};
 VIEW.day = async () => {
   const [s, pr] = await Promise.all([api('/day?d=' + S.date), api('/pressure')]);
   const x = s.tasks, isToday = S.date === TODAY(), mob = MOB(), dt = dateText(S.date);
   const maxLoad = Math.max(3, ...pr.map(p => p.events + p.tasks + p.due.length * 2));
-  const evForm = `<form class="addrow" onsubmit="event.preventDefault();const f=formData(this);act('/events','POST',{title:f.title,start:S.date+'T'+f.time,end:f.end?S.date+'T'+f.end:null,location:f.location||''})">
+  const evForm = `<form class="addrow" onsubmit="event.preventDefault();const f=formData(this);act('/events','POST',{title:f.title,start:S.date+'T'+f.time,end:f.end?S.date+'T'+f.end:null,location:f.location||'',shared:f.shared?1:0})">
       <input class="field" type="time" name="time" required><input class="field" type="time" name="end" title="${t('結束（可不填）')}">
-      <input class="field" type="text" name="title" placeholder="${t('新增行程')}" required><input class="field" type="text" name="location" placeholder="${t('地點')}" style="max-width:110px"><button class="btn pri">${t('加入')}</button></form>`;
+      <input class="field" type="text" name="title" placeholder="${t('新增行程')}" required><input class="field" type="text" name="location" placeholder="${t('地點')}" style="max-width:110px">${shareBox()}<button class="btn pri">${t('加入')}</button></form>`;
   const dayOff = s.skip ? `<button class="hb" onclick="act('/skip/${S.date}','DELETE',null,'${t('已取消放假')}')">${t('取消放假')}</button>`
     : `<button class="hb" title="${t('這天的固定行程不算，鬧鐘會重排')}" onclick="const r=prompt('${t('放假原因')}','${t('放假')}');if(r!==null)act('/skip','POST',{date:S.date,reason:r},'${t('這天的固定行程不算，鬧鐘已重排')}')">${t('這天放假')}</button>`;
   return `<section class="hero">${calbar('', dayOff)}
@@ -257,13 +274,14 @@ VIEW.day = async () => {
       <div class="card"><h3>${mob ? t('行程') : t('時間軸')}</h3>${mob ? agenda(s.events, {del: true, now: isToday ? nowMin() : null})
         : timeline(s.events, {...rangeOf([s]), alarms: s.alarms, now: isToday ? nowMin() : null})}
         ${mob ? `<details class="adder"><summary>＋ ${t('新增行程')}</summary>${evForm}</details>` : evForm}</div>
+      ${othersCard(s)}
     </div><div class="stack">
       <div class="card"><h3>${t('待辦')}</h3>
-        ${x.overdue.length ? `<div class="sec">${t('逾期')}</div>` + x.overdue.map(k => taskRow(k, `<span class="pill red">${t('原訂 {0}', md(k.plan_date))}</span><a class="pill" href="#" onclick="act('/tasks/${k.id}','PATCH',{plan_date:S.date});return false">${t('移到這天')}</a>`)).join('') : ''}
+        ${x.overdue.length ? `<div class="sec">${t('逾期')}</div>` + x.overdue.map(k => taskRow(k, `<span class="pill red">${t('原訂 {0}', md(k.plan_date))}</span><a class="pill" href="#" onclick="act('/tasks/${k.id}${own(k)}','PATCH',{plan_date:S.date});return false">${t('移到這天')}</a>`)).join('') : ''}
         <div class="sec">${isToday ? t('今天') : md(S.date)}</div>${x.day.length ? x.day.map(k => taskRow(k)).join('') : `<div class="empty">${t('這天沒有待辦')}</div>`}
-        <form class="addrow" onsubmit="event.preventDefault();act('/tasks','POST',{...formData(this),scope:'day',plan_date:S.date})"><input class="field" type="text" name="title" placeholder="${t('加一項待辦')}" required><button class="btn">${t('加入')}</button></form>
+        <form class="addrow" onsubmit="event.preventDefault();act('/tasks','POST',{...formData(this),scope:'day',plan_date:S.date})"><input class="field" type="text" name="title" placeholder="${t('加一項待辦')}" required>${shareBox()}<button class="btn">${t('加入')}</button></form>
         <div class="sec">${t('這一週')}</div>${x.week.length ? x.week.map(k => taskRow(k)).join('') : mob ? '' : `<div class="empty">${t('沒有本週待辦')}</div>`}
-        <form class="addrow" onsubmit="event.preventDefault();act('/tasks','POST',{...formData(this),scope:'week',plan_date:S.date})"><input class="field" type="text" name="title" placeholder="${t('這週要完成的事')}" required><button class="btn">${t('加入')}</button></form></div>
+        <form class="addrow" onsubmit="event.preventDefault();act('/tasks','POST',{...formData(this),scope:'week',plan_date:S.date})"><input class="field" type="text" name="title" placeholder="${t('這週要完成的事')}" required>${shareBox()}<button class="btn">${t('加入')}</button></form></div>
       <div class="card"><h3 title="${t('越高代表那天越滿；紅色數字是截止的數量')}">${t('未來 14 天')}</h3>
         <div class="press">${pr.map((p, i) => { const load = p.events + p.tasks + p.due.length * 2, lv = p.due.length >= 2 ? 3 : p.due.length ? 2 : load >= 4 ? 1 : 0;
           return `<button class="d ${p.date === TODAY() ? 'today' : ''}" onclick="go('day','${p.date}')" title="${p.date}${p.due.length ? ' · ' + esc(p.due.join(', ')) : ''}">
@@ -314,7 +332,7 @@ VIEW.tasks = async () => {
       ${Object.entries(g).filter(([, v]) => v.length).map(([k, v]) => `<div class="sec">${t(k)}</div>${v.join('')}`).join('') || `<div class="empty">${t('全部做完了 🎉')}</div>`}
       <form class="addrow" onsubmit="event.preventDefault();act('/tasks','POST',formData(this))"><input class="field" type="text" name="title" placeholder="${t('新增待辦')}" required>
         <select class="field" name="scope"><option value="day">${t('某一天')}</option><option value="week">${t('某一週')}</option></select><input class="field" type="date" name="plan_date" value="${td}">
-        <input class="field" type="datetime-local" name="due" title="${t('截止（可不填）')}"><button class="btn pri">${t('加入')}</button></form></div>
+        <input class="field" type="datetime-local" name="due" title="${t('截止（可不填）')}">${shareBox()}<button class="btn pri">${t('加入')}</button></form></div>
     <div class="card"><h3>${t('最近完成')}</h3>${done.map(k => taskRow(k)).join('') || `<div class="empty">${t('還沒有完成的項目')}</div>`}</div></div>`;
 };
 
@@ -405,7 +423,29 @@ VIEW.link = async () => {
       <dt>${t('色系')}</dt><dd><div class="pals"><button class="palm ${pref === 'auto' ? 'on' : ''}" onclick="setPalPref('auto')" title="${t('每一頁一個顏色，日曆跟著時段和星期變')}">${t('自動搭配')}</button>
         <button class="palm ${pref === 'random' ? 'on' : ''}" onclick="setPalPref('random')" title="${t('每換一頁隨機換一個顏色')}">🎲 ${t('隨機')}</button>
         ${Object.entries(PAL).map(([k, c]) => `<button class="pal ${pref === k ? 'on' : ''}" onclick="setPalPref('${k}')" title="${t(PAL_NAME[k])}" aria-label="${t(PAL_NAME[k])}" style="background:linear-gradient(135deg,${c.a.join(',')})"></button>`).join('')}</div></dd></dl></div>`;
-  return `<div class="cols"><div class="stack">${look}
+  const member = p => {
+    const full = 'token' in p, patch = f => `pact('/profiles/${p.id}','PATCH',${f})`;
+    const pick = (field, opts) => `<div class="seg sm">${opts.map(([v, l]) => `<button class="${p[field] === v ? 'on' : ''}" onclick="${patch(`{${field}:'${v}'}`)}">${t(l)}</button>`).join('')}</div>`;
+    return `<details class="mem" ${p.me ? 'open' : ''}><summary><i class="pdot" style="background:${esc(p.color)}"></i><b>${esc(p.name)}</b>${p.me && P.multi ? `<span class="pill teal">${t('你')}</span>` : ''}</summary>
+      ${!full ? `<div class="muted" style="margin-top:8px">${t('其他成員的設定要由本人或第一位成員來改。')}</div>` : `<dl class="kv">
+        <dt>${t('名字')}</dt><dd><input class="field" value="${esc(p.name)}" maxlength="20" style="max-width:180px" onchange="${patch('{name:this.value}')}"></dd>
+        <dt>${t('起床方式')}</dt><dd>${pick('alarm_mode', [['app', '手機 App 鬧鐘'], ['notify', '用推播叫'], ['off', '不需要']])}</dd>
+        <dt>${t('行程提醒')}</dt><dd><input class="field num" type="number" min="0" max="720" value="${p.remind_minutes}" style="width:76px" onchange="${patch('{remind_minutes:+this.value}')}"> <span class="muted">${t('分鐘前推播（0 = 不提醒）')}</span></dd>
+        ${P.multi ? `<dt>${t('我的行程')}</dt><dd>${pick('visible', [['full', '其他人看得到'], ['busy', '只顯示有事'], ['none', '不顯示']])}</dd>
+        <dt>${t('存取碼')}</dt><dd><code>${esc(p.token)}</code></dd>
+        <dt>${t('手機瀏覽器')}</dt><dd><code>${esc(url)}/?token=${esc(p.token)}</code></dd>` : ''}</dl>
+      <details class="fold in"><summary>${t('這個人的通知管道')}</summary>
+        <form onsubmit="event.preventDefault();pact('/profiles/${p.id}','PATCH',{notify:formData(this)},'${t('已儲存')}')">
+          ${p.channels.map(c => `<div class="chrow"><span class="chip ${c.configured ? 'on' : ''}">${esc(c.label)}</span>${c.env.map(k => `<input class="field" type="password" autocomplete="off" name="${k}" placeholder="${k}">`).join('')}</div>`).join('')}
+          <div class="addrow"><button class="btn pri">${t('儲存')}</button><button type="button" class="btn" onclick="api('/profiles/${p.id}/test','POST').then(sent)">${t('測試')}</button></div>
+          <div class="muted" style="margin-top:8px">${p.id === 1 ? t('留空的欄位不會變動；沒填的管道會用 .env 裡的設定。') : t('留空的欄位不會變動。要清掉某一欄，填一個空白再儲存。')}</div></form></details>
+      <div class="addrow">${P.local && !p.me ? `<button class="btn" onclick="api('/profiles/${p.id}/switch','POST').then(()=>location.reload())">${t('在這台電腦切換成這個人')}</button>` : ''}
+        ${P.admin && p.id !== 1 ? `<button class="btn" onclick="if(confirm('${t('移除這位成員？他的資料檔會保留在 data 資料夾。')}'))pact('/profiles/${p.id}','DELETE')">${t('移除')}</button>` : ''}</div>`}</details>`;
+  };
+  const members = `<div class="card"><h3>${P.multi ? t('成員') : t('提醒與共用')}${P.admin ? ` <span class="r"><button class="btn" onclick="const n=prompt('${t('新成員的名字')}');if(n)pact('/profiles','POST',{name:n},'${t('已新增，把存取碼給對方就能用')}')">＋ ${t('新增成員')}</button></span>` : ''}</h3>
+      ${P.multi ? '' : `<div class="muted" style="margin-bottom:6px">${t('跟另一半或家人共用？新增一位成員：每個人有自己的鬧鐘、待辦和通知，行程和待辦可以選擇「一起」。')}</div>`}
+      ${P.list.map(member).join('')}</div>`;
+  return `<div class="cols"><div class="stack">${look}${members}
     <div class="card"><h3>${t('手機 App')}</h3><dl class="kv"><dt>${t('伺服器網址')}</dt><dd>${st.urls.length ? st.urls.map(u => `<code>${esc(u)}</code>`).join(' ') : `<code>${esc(url)}</code>`}</dd><dt>${t('存取碼')}</dt><dd><code>${esc(st.phone_token)}</code></dd>
       <dt>${t('最後同步')}</dt><dd>${st.phone_last_sync ? esc(st.phone_last_sync.replace('T', ' ')) : `<span class="no">${t('還沒連上來過')}</span>`}</dd>
       <dt>${t('手機瀏覽器')}</dt><dd><code>${esc(url)}/?token=…</code></dd></dl></div>
@@ -465,4 +505,4 @@ document.addEventListener('keydown', e => {
   }
 });
 setInterval(() => { if (S.view === 'day' && !/INPUT|SELECT/.test(document.activeElement.tagName)) render(); }, 60000);
-render();
+loadP().then(render);

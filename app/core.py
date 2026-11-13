@@ -1,7 +1,7 @@
 """核心邏輯：某天的行程、鬧鐘排程、每日簡報文字。"""
 from datetime import date, datetime, timedelta
 
-from . import db
+from . import db, profiles
 from .i18n import tr, wd as wd_name
 
 WD = "一二三四五六日"
@@ -21,11 +21,46 @@ def events_on(d: str) -> list[dict]:
                 "time": w["start_time"], "end_time": w["end_time"] or "",
                 "location": w["location"], "source": "weekly", "wake": w["wake"],
             })
+    for p in profiles.others():                 # 其他成員標成「一起的」行程
+        with db.as_profile(p["id"]):
+            for e in db.rows("SELECT * FROM events WHERE substr(start,1,10) = ? AND shared = 1", (d,)):
+                e |= {"time": e["start"][11:16], "end_time": (e["end"] or "")[11:16],
+                      "owner": p["id"], "owner_name": p["name"]}
+                out.append(e)
     return sorted(out, key=lambda e: e["time"])
+
+
+def tasks_where(where: str, args: tuple = (), order: str = "done, due") -> list[dict]:
+    """自己的待辦 + 其他成員標成共用的待辦。"""
+    out = db.rows(f"SELECT * FROM tasks WHERE {where} ORDER BY {order}", args)
+    for p in profiles.others():
+        with db.as_profile(p["id"]):
+            for t in db.rows(f"SELECT * FROM tasks WHERE ({where}) AND shared = 1 ORDER BY {order}", args):
+                out.append(t | {"owner": p["id"], "owner_name": p["name"]})
+    return out
+
+
+def others_on(d: str) -> list[dict]:
+    """其他成員這天的行程（依他們各自設定的公開程度）和第一個鬧鐘。"""
+    out = []
+    for p in profiles.others():
+        if p["visible"] == "none":
+            continue
+        with db.as_profile(p["id"]):
+            evs = [e for e in events_on(d) if not e.get("owner") and not e.get("shared")
+                   and not e["title"].startswith("⏰")]
+            on = [a["time"] for a in plan(d) if a["enabled"]] if p["alarm_mode"] != "off" else []
+        out.append({"id": p["id"], "name": p["name"], "color": p["color"], "alarm": on[0] if on else None,
+                    "events": [{"time": e["time"], "end_time": e["end_time"],
+                                "title": e["title"] if p["visible"] == "full" else None,
+                                "location": e.get("location", "") if p["visible"] == "full" else ""} for e in evs]})
+    return out
 
 
 def compute_alarms(d: str) -> tuple[list[str], str]:
     """依規則算出某天的鬧鐘時間，回傳 (時間清單, 說明)。"""
+    if profiles.current()["alarm_mode"] == "off":
+        return [], tr("這位成員沒有開鬧鐘")
     wd = date.fromisoformat(d).weekday()
     rule = next(
         (r for r in db.rows("SELECT * FROM alarm_rules WHERE enabled = 1 ORDER BY id")
@@ -80,13 +115,12 @@ def tasks_for(d: str) -> dict:
     """某天要看的待辦：當日、逾期未完成、本週待辦。"""
     mon = week_monday(d)
     return {
-        "day": db.rows("SELECT * FROM tasks WHERE scope='day' AND plan_date = ? ORDER BY done, due", (d,)),
-        "overdue": db.rows(
-            "SELECT * FROM tasks WHERE done = 0 AND scope='day' AND plan_date < ? ORDER BY plan_date", (d,)),
-        "week": db.rows("SELECT * FROM tasks WHERE scope='week' AND plan_date = ? ORDER BY done, due", (mon,)),
-        "upcoming_due": db.rows(
-            "SELECT * FROM tasks WHERE done = 0 AND due IS NOT NULL AND substr(due,1,10) BETWEEN ? AND ? ORDER BY due",
-            (d, (date.fromisoformat(d) + timedelta(days=7)).isoformat())),
+        "day": tasks_where("scope='day' AND plan_date = ?", (d,)),
+        "overdue": tasks_where("done = 0 AND scope='day' AND plan_date < ?", (d,), "plan_date"),
+        "week": tasks_where("scope='week' AND plan_date = ?", (mon,)),
+        "upcoming_due": tasks_where(
+            "done = 0 AND due IS NOT NULL AND substr(due,1,10) BETWEEN ? AND ?",
+            (d, (date.fromisoformat(d) + timedelta(days=7)).isoformat()), "due"),
     }
 
 
@@ -99,6 +133,7 @@ def day_summary(d: str) -> dict:
         "tasks": tasks_for(d),
         "alarms": plan(d),
         "inbox_pending": db.one("SELECT COUNT(*) n FROM inbox WHERE status='pending'")["n"],
+        "others": others_on(d),
     }
 
 
@@ -111,13 +146,14 @@ def brief_text(d: str, kind: str) -> str:
         lines.append(f"🚫 {s['skip']['reason'] or tr('放假')}")
 
     on = [a["time"] for a in s["alarms"] if a["enabled"]]
-    if kind == "evening":
+    if kind == "evening" and profiles.current()["alarm_mode"] != "off":
         lines.append(tr("⏰ 鬧鐘 {n} 個：{a}～{b}", n=len(on), a=on[0], b=on[-1]) if on else tr("⏰ 明天沒有排鬧鐘"))
 
     lines.append(tr("📅 行程：") + ("" if s["events"] else tr("無")))
     for e in s["events"]:
         loc = f"（{e['location']}）" if e.get("location") else ""
-        lines.append(f"  {e['time']} {e['title']}{loc}")
+        who = "👥 " if e.get("shared") else ""
+        lines.append(f"  {e['time']} {who}{e['title']}{loc}")
 
     t = s["tasks"]
     todo = [x for x in t["day"] if not x["done"]]

@@ -1,5 +1,7 @@
 """SQLite 資料層：所有資料都存在 data/asa.db。"""
+import contextvars
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "asa.db"
@@ -20,7 +22,8 @@ CREATE TABLE IF NOT EXISTS events (
     location TEXT DEFAULT '',
     note TEXT DEFAULT '',
     source TEXT DEFAULT 'manual',   -- manual / 來源外掛的 NAME
-    wake INTEGER DEFAULT 1          -- 是否作為鬧鐘的基準行程
+    wake INTEGER DEFAULT 1,         -- 是否作為鬧鐘的基準行程
+    shared INTEGER DEFAULT 0        -- 1 = 一起的：其他成員也看得到、也算進他們的鬧鐘
 );
 CREATE TABLE IF NOT EXISTS weekly_events (   -- 每週固定行程（課表、班表…）
     id INTEGER PRIMARY KEY,
@@ -46,7 +49,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     done_at TEXT,
     link TEXT DEFAULT '',
     source TEXT DEFAULT 'manual',
-    created TEXT DEFAULT (datetime('now','localtime'))
+    created TEXT DEFAULT (datetime('now','localtime')),
+    shared INTEGER DEFAULT 0        -- 1 = 共用清單：其他成員也看得到、也能勾
 );
 CREATE TABLE IF NOT EXISTS inbox (           -- 待審核佇列
     id INTEGER PRIMARY KEY,
@@ -94,28 +98,84 @@ CREATE TABLE IF NOT EXISTS alarm_log (       -- 手機回報，之後用來學�
     action TEXT NOT NULL,           -- fired / dismissed / snoozed / awake
     ts TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS profiles (        -- 成員名單（只用第一位成員資料庫裡的這張）
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    color TEXT DEFAULT '#7c5cff',
+    token TEXT,                     -- 存取碼；第一位成員沿用 .env 的 PHONE_TOKEN
+    alarm_mode TEXT DEFAULT 'app',  -- app = 手機 App 鬧鐘 / notify = 到點用推播叫 / off = 不需要
+    remind_minutes INTEGER DEFAULT 0,   -- 行程開始前幾分鐘推播提醒；0 = 不提醒
+    visible TEXT DEFAULT 'busy',    -- 其他成員看我的行程：full / busy / none
+    lang TEXT,
+    notify TEXT DEFAULT '{}'        -- 這個人的通知管道設定（JSON）
+);
 """
+
+# 目前是哪位成員：每位成員一個資料庫檔，私人資料天生分開（見 profiles.py）
+_profile: contextvars.ContextVar[int] = contextvars.ContextVar("asa_profile", default=1)
+
+
+def me() -> int:
+    return _profile.get()
+
+
+def use(pid: int) -> None:
+    _profile.set(int(pid))
+
+
+@contextmanager
+def as_profile(pid: int):
+    token = _profile.set(int(pid))
+    try:
+        yield
+    finally:
+        _profile.reset(token)
+
+
+def path(pid: int | None = None) -> Path:
+    pid = pid or me()
+    return DB_PATH if pid == 1 else DB_PATH.with_name(f"{DB_PATH.stem}-{pid}{DB_PATH.suffix}")
 
 
 def conn() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(exist_ok=True)
-    c = sqlite3.connect(DB_PATH)
+    c = sqlite3.connect(path())
     c.row_factory = sqlite3.Row
     return c
 
 
-def init() -> None:
-    with conn() as c:
+@contextmanager
+def opened():
+    """開一條連線，結束時提交並確實關閉（Windows 上沒關的話，資料庫檔會一直被佔住）。"""
+    c = conn()
+    try:
+        with c:
+            yield c
+    finally:
+        c.close()
+
+
+def init_one() -> None:
+    """建立／升級目前這位成員的資料庫。"""
+    with opened() as c:
         c.executescript(SCHEMA)
         # 舊資料庫升級：補上後來才加的欄位
-        have = {r["name"] for r in c.execute("PRAGMA table_info(inbox)")}
-        for col, ddl in (("end", "TEXT"), ("location", "TEXT DEFAULT ''")):
-            if col not in have:
-                c.execute(f'ALTER TABLE inbox ADD COLUMN "{col}" {ddl}')
+        for table, cols in (("inbox", (("end", "TEXT"), ("location", "TEXT DEFAULT ''"))),
+                            ("events", (("shared", "INTEGER DEFAULT 0"),)),
+                            ("tasks", (("shared", "INTEGER DEFAULT 0"),))):
+            have = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
+            for col, ddl in cols:
+                if col not in have:
+                    c.execute(f'ALTER TABLE {table} ADD COLUMN "{col}" {ddl}')
+
+
+def init() -> None:
+    with as_profile(1):
+        init_one()
 
 
 def rows(sql: str, args: tuple = ()) -> list[dict]:
-    with conn() as c:
+    with opened() as c:
         return [dict(r) for r in c.execute(sql, args).fetchall()]
 
 
@@ -126,7 +186,7 @@ def one(sql: str, args: tuple = ()) -> dict | None:
 
 def run(sql: str, args: tuple = ()) -> int:
     """執行寫入，回傳 lastrowid。"""
-    with conn() as c:
+    with opened() as c:
         return c.execute(sql, args).lastrowid
 
 

@@ -3,9 +3,13 @@ import os
 
 import httpx
 
+from . import db, profiles
+
 
 def _env(*keys: str) -> list[str]:
-    return [os.getenv(k, "").strip() for k in keys]
+    """目前這位成員的設定值：自己在設定頁填的優先；第一位成員沒填的話用 .env。"""
+    own = profiles.current()["notify"]
+    return [str(own.get(k) or (os.getenv(k, "") if db.me() == 1 else "")).strip() for k in keys]
 
 
 def _discord(text: str, hook: str):

@@ -1,20 +1,20 @@
 """Asa 主程式：API + 排程 + 網頁介面。"""
-import hmac
+import contextvars
 import os
 import secrets
 import socket
 import subprocess
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import closures, core, db, demo, i18n, insights, notify, quick, sources
+from . import closures, core, db, demo, i18n, insights, notify, profiles, quick, sources
 from .i18n import tr
 
 ROOT = Path(__file__).resolve().parent
@@ -31,8 +31,8 @@ DEMO = os.getenv("ASA_DEMO", "").strip().lower() not in ("", "0", "false", "no")
 if DEMO:
     # 示範模式：用獨立的資料庫，每次啟動重建（見 demo.py）
     db.DB_PATH = db.DB_PATH.with_name("demo.db")
-    for _suffix in ("", "-wal", "-shm"):
-        db.DB_PATH.with_name("demo.db" + _suffix).unlink(missing_ok=True)
+    for _old in db.DB_PATH.parent.glob("demo*.db*"):
+        _old.unlink(missing_ok=True)
 
 
 def today() -> str:
@@ -48,19 +48,78 @@ def pick(body: dict, fields: list[str]) -> dict:
 
 
 def refresh_tomorrow() -> None:
-    """行程或規則有變動時，重排明天的自動鬧鐘。"""
-    core.regenerate_plan(tomorrow())
+    """行程或規則有變動時，重排明天的自動鬧鐘（「一起的」行程會影響其他成員，所以每個人都重排）。"""
+    for _ in profiles.each():
+        core.regenerate_plan(tomorrow())
+
+
+LOCAL: contextvars.ContextVar[bool] = contextvars.ContextVar("asa_local", default=True)
+
+
+def is_admin() -> bool:
+    """能不能管理成員：這台電腦上的瀏覽器，或第一位成員。"""
+    return LOCAL.get() or db.me() == 1
+
+
+def flag(v) -> int:
+    return 1 if v in (1, True, "1", "on", "true") else 0
+
+
+@contextmanager
+def owned(owner: int | None, table: str, id_: int):
+    """要改的那一筆如果是別的成員的，切到他的資料庫；但只有標成共用的才准動。"""
+    if not owner or int(owner) == db.me():
+        yield
+        return
+    if not profiles.get(owner):
+        raise HTTPException(404, tr("沒有這位成員"))
+    with db.as_profile(owner):
+        if not db.one(f"SELECT 1 FROM {table} WHERE id = ? AND shared = 1", (id_,)):
+            raise HTTPException(403, tr("這一筆不是共用的"))
+        yield
 
 
 # ---------- 排程工作 ----------
+def each_profile():
+    """排程工作用：依序切到每位成員，並用他的語言。"""
+    for p in profiles.each():
+        i18n.set_lang(p["lang"])
+        yield p
+    i18n.set_lang(None)
+
+
 def job_evening() -> None:
     d = tomorrow()
-    core.regenerate_plan(d)
-    notify.send(core.brief_text(d, "evening"))
+    for _ in each_profile():
+        core.regenerate_plan(d)
+        notify.send(core.brief_text(d, "evening"))
 
 
 def job_morning() -> None:
-    notify.send(core.brief_text(today(), "morning"))
+    for _ in each_profile():
+        notify.send(core.brief_text(today(), "morning"))
+
+
+def job_minute() -> None:
+    """每分鐘：行程開始前的提醒；起床方式選「推播」的成員，到點用推播叫。"""
+    now = datetime.now()
+    hm_now = now.strftime("%H:%M")
+    for p in each_profile():
+        if p["alarm_mode"] == "notify":
+            on = [a for a in core.plan(today()) if a["enabled"]]
+            for i, a in enumerate(on):
+                if a["time"] == hm_now:
+                    nxt = next((e for e in core.events_on(today()) if e["wake"] and e["time"] > hm_now), None)
+                    notify.send(tr("⏰ 起床！（第 {i}／{n} 個）", i=i + 1, n=len(on))
+                                + (tr("\n{time} {title}", time=nxt["time"], title=nxt["title"]) if nxt else ""))
+        if p["remind_minutes"]:
+            later = now + timedelta(minutes=p["remind_minutes"])
+            if later.date() == now.date():
+                for e in core.events_on(today()):
+                    if e["time"] == later.strftime("%H:%M") and not e["title"].startswith("⏰"):
+                        loc = f"（{e['location']}）" if e.get("location") else ""
+                        notify.send(tr("🔔 {n} 分鐘後：{time} {title}", n=p["remind_minutes"], time=e["time"],
+                                       title=e["title"]) + loc)
 
 
 def inbox_add(data: dict, silent: bool = False) -> int | None:
@@ -137,14 +196,20 @@ def hm(env: str, default: str) -> tuple[int, int]:
     return int(h), int(m)
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    db.init()
+def default_rules() -> None:
+    """目前這位成員還沒有任何鬧鐘規則的話，給兩條預設的。"""
     if not db.rows("SELECT 1 FROM alarm_rules LIMIT 1"):
         db.insert("alarm_rules", {"name": tr("平日"), "weekdays": "0,1,2,3,4", "anchor": "first_event",
                                   "lead_minutes": 90, "count": 8, "interval_minutes": 5})
         db.insert("alarm_rules", {"name": tr("週末"), "weekdays": "5,6", "anchor": "first_event",
                                   "lead_minutes": 90, "count": 4, "interval_minutes": 10})
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    db.init()
+    profiles.ensure(tr("我"))
+    default_rules()
     if DEMO:
         demo.seed()
         yield
@@ -156,6 +221,7 @@ async def lifespan(_: FastAPI):
     mh, mm = hm("MORNING_TIME", "08:00")
     sched.add_job(job_evening, "cron", hour=eh, minute=em)
     sched.add_job(job_morning, "cron", hour=mh, minute=mm)
+    sched.add_job(job_minute, "cron", second=0)
     if closures.configured():
         # 停班停課：前一晚 19–22 點陸續公告，也可能凌晨才宣布，所以晚上和清晨各查幾次
         sched.add_job(closures.job, "cron", hour="19-23", minute="5,35", args=[1])
@@ -183,15 +249,22 @@ async def fresh_static(request: Request, call_next):
 
 @app.middleware("http")
 async def guard(request: Request, call_next):
-    """本機直接放行；其他裝置（手機）要帶存取碼。"""
+    """本機直接放行；其他裝置（手機）要帶存取碼。存取碼同時決定「你是哪位成員」。"""
     host = request.client.host if request.client else ""
     i18n.set_lang(request.headers.get("x-lang"))
     if host in ("127.0.0.1", "::1", "testclient"):
+        # 這台電腦上：預設是第一位成員，設定頁可以切換（記在 cookie）
+        pick_ = request.headers.get("x-profile") or request.cookies.get("asa_profile") or "1"
+        LOCAL.set(True)
+        db.use(int(pick_) if pick_.isdigit() and profiles.get(int(pick_)) else 1)
         return await call_next(request)
     given = (request.headers.get("x-token") or request.query_params.get("token")
              or request.cookies.get("lh_token") or "")
-    if not hmac.compare_digest(given.encode(), os.environ["PHONE_TOKEN"].encode()):
+    who = profiles.by_token(given)
+    if not who:
         return PlainTextResponse(tr("需要存取碼：請在網址後面加上 ?token=你的存取碼"), status_code=401)
+    LOCAL.set(False)
+    db.use(who["id"])
     resp = await call_next(request)
     if request.query_params.get("token"):
         resp.set_cookie("lh_token", given, max_age=31536000, httponly=True, samesite="lax")
@@ -237,20 +310,24 @@ def api_month(d: str | None = None):
 
 
 # ---------- 行程 ----------
-EVENT_F = ["title", "start", "end", "location", "note", "wake"]
+EVENT_F = ["title", "start", "end", "location", "note", "wake", "shared"]
 WEEKLY_F = ["title", "weekday", "start_time", "end_time", "location", "wake"]
 
 
 @app.post("/api/events")
 def add_event(body: dict = Body(...)):
-    id_ = db.insert("events", pick(body, EVENT_F))
+    data = pick(body, EVENT_F)
+    if "shared" in data:
+        data["shared"] = flag(data["shared"])
+    id_ = db.insert("events", data)
     refresh_tomorrow()
     return {"id": id_}
 
 
 @app.delete("/api/events/{id_}")
-def del_event(id_: int):
-    db.run("DELETE FROM events WHERE id = ?", (id_,))
+def del_event(id_: int, owner: int | None = None):
+    with owned(owner, "events", id_):
+        db.run("DELETE FROM events WHERE id = ?", (id_,))
     refresh_tomorrow()
     return {"ok": True}
 
@@ -290,13 +367,13 @@ def del_skip(d: str):
 
 
 # ---------- 待辦 ----------
-TASK_F = ["title", "scope", "plan_date", "due", "est_minutes", "link", "done"]
+TASK_F = ["title", "scope", "plan_date", "due", "est_minutes", "link", "done", "shared"]
 
 
 @app.get("/api/tasks")
 def list_tasks(include_done: bool = False):
-    where = "" if include_done else "WHERE done = 0"
-    return db.rows(f"SELECT * FROM tasks {where} ORDER BY COALESCE(plan_date, substr(due,1,10), '9999'), due")
+    return core.tasks_where("1=1" if include_done else "done = 0", (),
+                            "COALESCE(plan_date, substr(due,1,10), '9999'), due")
 
 
 @app.post("/api/tasks")
@@ -304,23 +381,29 @@ def add_task(body: dict = Body(...)):
     data = pick(body, TASK_F)
     data.setdefault("scope", "day")
     data.setdefault("plan_date", today())
+    if "shared" in data:
+        data["shared"] = flag(data["shared"])
     if data["scope"] == "week":
         data["plan_date"] = core.week_monday(data["plan_date"])
     return {"id": db.insert("tasks", data)}
 
 
 @app.patch("/api/tasks/{id_}")
-def edit_task(id_: int, body: dict = Body(...)):
+def edit_task(id_: int, body: dict = Body(...), owner: int | None = None):
     data = pick(body, TASK_F)
     if "done" in data:
         data["done_at"] = datetime.now().isoformat(timespec="minutes") if data["done"] else None
-    db.update("tasks", id_, data)
+    if "shared" in data:
+        data["shared"] = flag(data["shared"])
+    with owned(owner, "tasks", id_):
+        db.update("tasks", id_, data)
     return {"ok": True}
 
 
 @app.delete("/api/tasks/{id_}")
-def del_task(id_: int):
-    db.run("DELETE FROM tasks WHERE id = ?", (id_,))
+def del_task(id_: int, owner: int | None = None):
+    with owned(owner, "tasks", id_):
+        db.run("DELETE FROM tasks WHERE id = ?", (id_,))
     return {"ok": True}
 
 
@@ -533,7 +616,7 @@ def status():
         "sync_minutes": int(os.getenv("SYNC_INTERVAL_MINUTES", "30")),
         "phone_last_sync": db.kv_get("phone_last_sync"),
         "closure": {"area": closures.area(), "last": db.kv_get("closure_last")},
-        "phone_token": os.environ["PHONE_TOKEN"], "urls": server_urls(),
+        "phone_token": profiles.token_of(profiles.current()), "urls": server_urls(),
         "evening": os.getenv("EVENING_TIME", "21:30"), "morning": os.getenv("MORNING_TIME", "08:00"),
     }
 
@@ -541,6 +624,81 @@ def status():
 @app.post("/api/sources/{name}/run")
 def source_run(name: str):
     return job_source(name)
+
+
+# ---------- 成員 ----------
+def profile_view(p: dict, full: bool) -> dict:
+    """給前端看的成員資料；full = 自己或管理者才看得到存取碼和設定。"""
+    out = {"id": p["id"], "name": p["name"], "color": p["color"], "me": p["id"] == db.me()}
+    if full:
+        with db.as_profile(p["id"]):
+            chans = [c | {"label": tr(c["label"])} for c in notify.channels()]
+            last = db.kv_get("phone_last_sync")
+        out |= {"alarm_mode": p["alarm_mode"], "remind_minutes": p["remind_minutes"], "visible": p["visible"],
+                "token": profiles.token_of(p), "channels": chans, "phone_last_sync": last}
+    return out
+
+
+@app.get("/api/profiles")
+def list_profiles():
+    ps = profiles.all()
+    return {"me": profile_view(profiles.current(), True), "multi": len(ps) > 1, "local": LOCAL.get(),
+            "admin": is_admin(), "list": [profile_view(p, is_admin() or p["id"] == db.me()) for p in ps]}
+
+
+@app.post("/api/profiles")
+def add_profile(body: dict = Body(...)):
+    if not is_admin():
+        raise HTTPException(403, tr("只有第一位成員或這台電腦可以管理成員"))
+    return profile_view(profiles.create(str(body.get("name", ""))), True)
+
+
+@app.patch("/api/profiles/{id_}")
+def edit_profile(id_: int, body: dict = Body(...)):
+    if not (is_admin() or id_ == db.me()):
+        raise HTTPException(403, tr("只能改自己的設定"))
+    if not profiles.get(id_):
+        raise HTTPException(404, tr("沒有這位成員"))
+    try:
+        profiles.update(id_, body)
+    except ValueError:
+        raise HTTPException(400, tr("設定值不正確")) from None
+    with db.as_profile(id_):
+        if profiles.current()["alarm_mode"] != "off":
+            default_rules()
+        core.regenerate_plan(tomorrow())
+    return {"ok": True}
+
+
+@app.delete("/api/profiles/{id_}")
+def del_profile(id_: int):
+    if not is_admin():
+        raise HTTPException(403, tr("只有第一位成員或這台電腦可以管理成員"))
+    try:
+        profiles.delete(id_)
+    except ValueError:
+        raise HTTPException(400, tr("第一位成員不能移除")) from None
+    return {"ok": True}
+
+
+@app.post("/api/profiles/{id_}/switch")
+def switch_profile(id_: int):
+    """在這台電腦的瀏覽器上切換成另一位成員（其他裝置是由存取碼決定，不能切）。"""
+    if not LOCAL.get():
+        raise HTTPException(403, tr("其他裝置要用那位成員自己的存取碼"))
+    if not profiles.get(id_):
+        raise HTTPException(404, tr("沒有這位成員"))
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie("asa_profile", str(id_), max_age=31536000, samesite="lax")
+    return resp
+
+
+@app.post("/api/profiles/{id_}/test")
+def test_profile(id_: int):
+    if not (is_admin() or id_ == db.me()):
+        raise HTTPException(403, tr("只能改自己的設定"))
+    with db.as_profile(id_):
+        return notify.send(tr("✅ Asa 通知測試成功"))
 
 
 # ---------- 通知 ----------

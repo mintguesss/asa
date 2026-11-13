@@ -22,6 +22,8 @@ ASA_DEMO=1 ./run.sh        # Windows: set ASA_DEMO=1 && run.bat
 - **Android companion app** — rings on its own (no internet needed once synced), full-screen on the lock screen, rising volume, a maths question before "I'm up", reports wake-up times back.
 - **Habit learning** — after a few mornings it suggests rule changes ("you sleep through the first 3, start later and ring more often").
 - **Calendar** — day / week / month views, weekly recurring events, days off.
+- **Couples and families** — add a member in Settings and each person gets their own alarms, to-dos, notifications and access code. Events and to-dos can be marked *shared*; a shared 9 am event moves both people's alarms, each by their own rule. No accounts or passwords, and nothing changes if you use it alone.
+- **No Android phone?** — a member can be woken by push notification instead of the app (works on iPhone through ntfy, Telegram, LINE or Discord), and anyone can get a push N minutes before each event.
 - **Typhoon days (Taiwan)** — set `CLOSURE_AREA` and Asa watches the government closure notices; when classes are cancelled it marks the day off, drops the alarms and tells you.
 - **To-dos** — per day and per week, deadlines shown on the calendar, a 14-day load chart.
 - **One-line input** (`Ctrl+K`) — `tomorrow 3pm meeting @room 5`, `report by fri`, `alarm tomorrow 7:30`, `every tue 9:10-12:00 calculus` (English or Chinese).
