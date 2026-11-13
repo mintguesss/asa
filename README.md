@@ -37,7 +37,7 @@ ASA_DEMO=1 ./run.sh        # Windows: set ASA_DEMO=1 && run.bat
 Needs Python 3.11+.
 
 ```bash
-git clone <this repo> && cd asa
+git clone https://github.com/mintguesss/asa && cd asa
 cp .env.example .env      # optional — everything works with an empty .env
 ./run.sh                  # Windows: run.bat
 ```
