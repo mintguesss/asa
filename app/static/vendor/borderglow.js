@@ -5,6 +5,7 @@
  */
 (function () {
   document.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse') return;   // 觸控不追蹤（Asa 的修改）
     const card = e.target.closest && e.target.closest('.border-glow-card');
     if (!card) return;
     const rect = card.getBoundingClientRect();

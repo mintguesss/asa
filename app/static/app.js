@@ -505,4 +505,14 @@ document.addEventListener('keydown', e => {
   }
 });
 setInterval(() => { if (S.view === 'day' && !/INPUT|SELECT/.test(document.activeElement.tagName)) render(); }, 60000);
+/* 裝成 App（PWA）：註冊 service worker（只在 HTTPS 或這台電腦上有效） */
+if ('serviceWorker' in navigator && isSecureContext) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+/* 手機瀏覽器捲動時網址列會縮放，底部導覽列要貼著「看得到的」畫面底部，不然會沉下去或浮起來 */
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const pin = () => document.documentElement.style.setProperty('--vvb', Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) + 'px');
+  vv.addEventListener('resize', pin); vv.addEventListener('scroll', pin); addEventListener('resize', pin); pin();
+}
+
 loadP().then(render);

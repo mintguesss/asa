@@ -5,7 +5,7 @@
 """
 from datetime import date, timedelta
 
-from . import core, db, i18n
+from . import core, db, i18n, profiles
 
 
 def seed() -> None:
@@ -80,5 +80,24 @@ def seed() -> None:
             late = h * 60 + m + 35 + (n % 3) * 5
             db.insert("alarm_log", {"date": d, "time": alarms[-1]["time"], "action": "awake",
                                     "ts": f"{d} {late // 60:02d}:{late % 60:02d}:00"})
+    # 第二位成員：示範「跟另一半共用」——她用 iPhone，不排鬧鐘，改用行程前推播提醒
+    db.update("events", db.one("SELECT id FROM events WHERE start LIKE ?", (f"{day(6)}%",))["id"], {"shared": 1})
+    db.insert("tasks", {"title": L("買衛生紙和洗衣精", "Toilet paper & detergent"), "scope": "week",
+                        "plan_date": monday.isoformat(), "shared": 1})
+    other = profiles.create(L("小美", "Mia"))
+    profiles.update(other["id"], {"visible": "full", "remind_minutes": 30})
+    with db.as_profile(other["id"]):
+        for wd, start, end, title in [(0, "09:00", "18:00", L("上班", "Work")), (1, "09:00", "18:00", L("上班", "Work")),
+                                      (2, "09:00", "18:00", L("上班", "Work")), (3, "09:00", "18:00", L("上班", "Work")),
+                                      (4, "09:00", "17:00", L("上班", "Work")), (2, "19:30", "21:00", L("瑜珈課", "Yoga"))]:
+            db.insert("weekly_events", {"title": title, "weekday": wd, "start_time": start, "end_time": end, "wake": 0})
+        db.insert("events", {"title": L("一起吃早午餐", "Brunch together"), "start": f"{day(1)}T10:30",
+                             "end": f"{day(1)}T12:00", "location": L("巷口早午餐", "The corner café"), "shared": 1})
+        db.insert("events", {"title": L("看電影", "Movie night"), "start": f"{day(3)}T20:10",
+                             "end": f"{day(3)}T22:30", "location": L("威秀影城", "Cinema"), "shared": 1})
+        db.insert("tasks", {"title": L("訂週末餐廳", "Book a restaurant for the weekend"), "scope": "day",
+                            "plan_date": day(0), "shared": 1})
+        db.insert("tasks", {"title": L("寄生日卡給阿嬤", "Send grandma a birthday card"), "scope": "day", "plan_date": day(0)})
+
     for n in range(0, 14):
         core.regenerate_plan(day(n))

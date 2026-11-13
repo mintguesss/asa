@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0c1a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Asa">
+<title>Asa</title>
+<style>
+  html,body{margin:0;height:100%;background:radial-gradient(120% 80% at 50% 0%,#2a1f6b,#0a0c1a 60%);color:#f3f4f8;font:16px/1.5 system-ui,-apple-system,"Noto Sans TC",sans-serif}
+  body{display:grid;place-items:center;padding:24px;box-sizing:border-box}
+  form{width:100%;max-width:340px;text-align:center}
+  img{width:72px;height:72px;border-radius:18px;margin-bottom:14px}
+  h1{margin:0 0 4px;font-size:24px}p{margin:0 0 22px;color:#a9adc4;font-size:14px}
+  input{width:100%;box-sizing:border-box;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:inherit;font-size:17px;text-align:center;letter-spacing:.06em}
+  button{margin-top:12px;width:100%;padding:14px;border:0;border-radius:14px;font-size:16px;font-weight:600;color:#111;background:linear-gradient(90deg,#7c5cff,#38e1ff);cursor:pointer}
+  .err{color:#ff8a9c;min-height:1.5em;margin-top:10px;font-size:14px}
+</style>
+</head>
+<body>
+<form id="f">
+  <img src="/static/icons/icon-192.png" alt="">
+  <h1>Asa</h1>
+  <p id="hint">輸入存取碼（在電腦上 Asa 的「設定」頁可以看到）</p>
+  <input id="t" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="xxxx-xxxx-xxxx" required>
+  <button id="go">進入</button>
+  <div class="err" id="err"></div>
+</form>
+<script>
+  if (!(navigator.language || 'zh').toLowerCase().startsWith('zh')) {
+    document.documentElement.lang = 'en';
+    hint.textContent = 'Enter your access code (shown on the Settings page of Asa on your computer)';
+    go.textContent = 'Continue';
+  }
+  if (location.search.includes('token=')) err.textContent = document.documentElement.lang === 'en' ? 'Wrong access code' : '存取碼不對';
+  f.onsubmit = e => { e.preventDefault(); location.href = '/?token=' + encodeURIComponent(t.value.trim()); };
+</script>
+</body>
+</html>

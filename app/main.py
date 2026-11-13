@@ -258,10 +258,15 @@ async def guard(request: Request, call_next):
         LOCAL.set(True)
         db.use(int(pick_) if pick_.isdigit() and profiles.get(int(pick_)) else 1)
         return await call_next(request)
+    if request.url.path in PUBLIC:
+        return await call_next(request)
     given = (request.headers.get("x-token") or request.query_params.get("token")
              or request.cookies.get("lh_token") or "")
     who = profiles.by_token(given)
     if not who:
+        if request.method == "GET" and not request.url.path.startswith("/api/"):
+            # 瀏覽器（包括裝成 App 之後）沒有存取碼：給一個輸入頁，不要只丟一行字
+            return FileResponse(ROOT / "static" / "login.html", status_code=401, headers={"Cache-Control": "no-store"})
         return PlainTextResponse(tr("需要存取碼：請在網址後面加上 ?token=你的存取碼"), status_code=401)
     LOCAL.set(False)
     db.use(who["id"])
@@ -274,6 +279,22 @@ async def guard(request: Request, call_next):
 @app.get("/")
 def index():
     return FileResponse(ROOT / "static" / "index.html")
+
+
+# 裝成 App（PWA）要的檔案。這些不含任何個人資料，不用存取碼也能拿（瀏覽器抓 manifest 時不會帶 cookie）。
+PUBLIC = {"/manifest.webmanifest", "/sw.js", "/static/icons/icon-192.png", "/static/icons/icon-512.png",
+          "/static/icons/maskable-512.png", "/static/icons/apple-touch-icon.png"}
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    return FileResponse(ROOT / "static" / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+def service_worker():
+    return FileResponse(ROOT / "static" / "sw.js", media_type="text/javascript",
+                        headers={"Service-Worker-Allowed": "/"})
 
 
 # ---------- 總覽 ----------

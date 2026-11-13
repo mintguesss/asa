@@ -46,7 +46,9 @@ body::after{content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;bac
 body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
   background:
   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
-main{padding:26px 28px 130px;max-width:1220px;margin:0 auto}
+main{padding:calc(26px + env(safe-area-inset-top,0px)) 28px 130px;max-width:1220px;margin:0 auto}
+/* 卡片的發光邊框會超出畫面右緣一點點；不裁掉的話手機會把整頁縮小，捲動時底部導覽列就會沉下去 */
+html,main{overflow-x:clip}
 
 /* ---------- 指令列 ---------- */
 .topbar{display:flex;gap:10px;align-items:center;max-width:880px;margin:0 auto 26px}
@@ -65,7 +67,7 @@ main{padding:26px 28px 130px;max-width:1220px;margin:0 auto}
 .cmd .pv span{margin-left:auto;color:var(--mute);font-size:12px}
 
 /* ---------- 浮動 Dock ---------- */
-.dock{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:40;display:flex;gap:4px;padding:7px;border-radius:22px;background:var(--dock);backdrop-filter:blur(26px) saturate(1.6);border:1px solid rgba(var(--w),.18);box-shadow:0 20px 60px -18px rgba(0,0,20,.55),inset 0 1px 0 rgba(var(--w),.08)}
+.dock{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px) + var(--vvb,0px));transform:translateX(-50%) translateZ(0);will-change:transform;z-index:40;display:flex;gap:4px;padding:7px;border-radius:22px;background:var(--dock);backdrop-filter:blur(26px) saturate(1.6);border:1px solid rgba(var(--w),.18);box-shadow:0 20px 60px -18px rgba(0,0,20,.55),inset 0 1px 0 rgba(var(--w),.08)}
 .nav{position:relative;border:0;background:none;border-radius:15px;padding:8px 15px 6px;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--mute);font-size:11px;transition:transform .35s var(--spring),color .2s,background .2s;transform-origin:bottom}
 .nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .nav:hover{color:var(--ink);transform:translateY(-5px) scale(1.14)}
@@ -322,7 +324,7 @@ pre.brief{white-space:pre-wrap;font:14px/1.75 var(--font);margin:0;color:var(--i
 @media (max-width:820px){
   main{padding:16px 14px 120px}
   .cols{grid-template-columns:1fr}
-  .dock{left:8px;right:8px;transform:none;justify-content:space-between;bottom:10px}.nav{padding:8px 6px 6px;flex:1}.nav:hover{transform:none}
+  .dock{left:8px;right:8px;transform:translateZ(0);justify-content:space-between;bottom:calc(10px + env(safe-area-inset-bottom,0px) + var(--vvb,0px))}.nav{padding:8px 6px 6px;flex:1}.nav:hover{transform:none}
   .cmd kbd{display:none}.cmd input{padding-right:14px}
   .week{grid-template-columns:repeat(7,150px)}
   .month{padding:8px}.mg{gap:3px}.mh span{padding:0;text-align:center}
@@ -402,7 +404,7 @@ pre.brief{white-space:pre-wrap;font:14px/1.75 var(--font);margin:0;color:var(--i
   .task{padding:8px 0}.task .x{opacity:.7}.sec{margin-top:12px}
   .addrow{margin-top:10px}.addrow .field[type=text]{min-width:90px}
   .nav span:not(.dot){font-size:10px;white-space:nowrap}.dock{padding:5px;border-radius:19px;gap:0}.nav{padding:7px 2px 5px}
-  main{padding-bottom:104px}
+  main{padding-bottom:calc(104px + env(safe-area-inset-bottom,0px))}
   .knobs{display:grid;grid-template-columns:1fr 1fr}.rule{padding:14px}
   .tcard .in{padding:20px 18px}.tcard h2{font-size:21px}
   .kv{grid-template-columns:1fr;gap:2px 0}.kv dd{margin-bottom:8px}
@@ -422,3 +424,21 @@ pre.brief{white-space:pre-wrap;font:14px/1.75 var(--font);margin:0;color:var(--i
 .chrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}.chrow .chip{min-width:74px;text-align:center}
 .chrow .field{flex:1;min-width:150px}
 .card.other .ag{opacity:.9}
+
+/* ---------- 觸控裝置：沒有滑鼠就沒有 hover，點一下時那些位移和發光只會卡頓、殘留，全部關掉 ---------- */
+@media (hover:none),(pointer:coarse){
+  .border-glow-card::before,.border-glow-card::after,.border-glow-card>.edge-light{display:none!important}
+  .nav:hover,.btn:hover,.hb:hover,.bell:hover,.tl .ev:hover,.week .col:hover,.mc:hover,.rule:hover,.wd:hover,
+  .tbtn:hover,.pal:hover{transform:none}
+  .bell:hover{transform:translateX(-50%)}
+  .task:hover{padding-left:0}
+  .tl .ev:hover,.tbtn:hover,.btn.pri:hover,.btn.sun:hover{box-shadow:none}
+  .press .d:hover .bar{filter:none}
+  a:hover{text-decoration:none}
+  /* 按下去時給一點回饋就好 */
+  .btn:active,.hb:active,.nav:active,.mc:active,.tbtn:active{transform:scale(.96)}
+  .btn,.hb,.nav,.mc,.tbtn{transition:transform .12s ease}
+  /* 毛玻璃在手機上很吃效能，模糊程度降低 */
+  .card,.runway,.week .col,.month{backdrop-filter:blur(12px)}
+  *{-webkit-tap-highlight-color:transparent}
+}
