@@ -16,7 +16,7 @@ const isDeadline = e => e.title.startsWith('⏰');
 const flagText = e => e.title.replace('⏰ 截止：', t('截止') + ' ');
 
 const S = {view: 'day', cal: 'day', date: TODAY(), inbox: 0};
-if (['day', 'week', 'month'].includes(store.get('cal'))) S.view = S.cal = store.get('cal');
+S.view = S.cal = ['day', 'week', 'month'].includes(store.get('cal2')) ? store.get('cal2') : 'month';
 if (['day', 'week', 'month'].includes(QS.get('view'))) S.view = S.cal = QS.get('view');
 else if (['tasks', 'inbox', 'alarms', 'weekly', 'link'].includes(QS.get('view'))) S.view = QS.get('view');
 if (/^\d{4}-\d{2}-\d{2}$/.test(QS.get('date') || '')) S.date = QS.get('date');
@@ -135,7 +135,7 @@ function drawRail() {
 }
 addEventListener('resize', () => moveInd($('#rail'), $('#rail .nav.on'), false));
 function go(v, d) {
-  S.view = v; if (isCal(v)) { S.cal = v; store.set('cal', v); }
+  S.view = v; if (isCal(v)) { S.cal = v; store.set('cal2', v); }
   if (d) S.date = d; S.enter = true; window.scrollTo(0, 0);
   if (palPref() === 'random') S.rnd = randomPal();          // 隨機模式：每換一頁換一個顏色
   return document.startViewTransition && !document.hidden ? document.startViewTransition(() => render()).updateCallbackDone : render();
@@ -251,6 +251,23 @@ function palNow() {
   return h < 5 ? 'night' : h < 8 ? 'dawn' : h < 16.5 ? 'day' : h < 19 ? 'dusk' : 'night';
 }
 let aurora, pal;
+/* 風格：vivid＝極光、發光、漸層；simple＝像 TimeTree 一樣乾淨的平面設計 */
+const styleNow = () => store.get('style') === 'simple' ? 'simple' : 'vivid';
+function setStyle(v) {
+  store.set('style', v); document.documentElement.dataset.style = v;
+  if (v === 'simple') { $('#aurora').innerHTML = ''; aurora = null; }
+  pal = null; setPal(); render();
+}
+/* 手機切到背景一陣子，瀏覽器會收回 WebGL，回來時背景變成一片白：偵測到就重建 */
+let glLost = false;
+$('#aurora').addEventListener('webglcontextlost', e => { e.preventDefault(); glLost = true; }, true);
+function rebuildAurora() {
+  const cv = $('#aurora canvas');
+  if (!glLost && cv && !(cv.getContext('webgl2')?.isContextLost?.())) return;
+  glLost = false; $('#aurora').innerHTML = ''; aurora = null; pal = null; setPal();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) rebuildAurora(); });
+addEventListener('pageshow', e => { if (e.persisted) { glLost = true; rebuildAurora(); } });
 function setPal() {
   const p = palNow();
   if (p === pal) return;
@@ -259,6 +276,7 @@ function setPal() {
   root.dataset.pal = p;
   ['--a1', '--a2', '--a3'].forEach((k, i) => root.style.setProperty(k, c.a[i]));
   setBorderGlowPalette(c.a, c.glow, 0.9);
+  if (styleNow() === 'simple') return;
   if (!aurora) aurora = createAurora($('#aurora'), {stops: c.stops, amplitude: 1.15, blend: 0.6, height: 0.5, glow: 0.75, layers: 3, speed: 0.9, brightness: 0.9, opacity: 0.85});
   else aurora.set({stops: c.stops});
 }
@@ -374,7 +392,34 @@ VIEW.week = async () => {
 };
 
 /* ---------- 月 ---------- */
+/* 月曆（首頁）：格子裡直接寫行程名稱、依種類上色；點一天，下面列出那天的行程 */
+async function pickDay(d) {
+  if (d.slice(0, 7) !== S.date.slice(0, 7)) return go('month', d);
+  S.date = d; await render();
+}
+const label = e => `<div class="lb ${e.kind}" ${e.color ? `style="--c:${esc(e.color)}"` : ''}>${esc(e.title)}</div>`;
 VIEW.month = async () => {
+  const [m, s] = await Promise.all([api('/month?d=' + S.date), api('/day?d=' + S.date)]), first = new Date(m.month + '-01T12:00');
+  const title = LANG === 'en' ? `${first.toLocaleDateString(LOCALE, {month: 'long'})} <small>${first.getFullYear()}</small>` : `${first.getMonth() + 1} 月 <small>${first.getFullYear()}</small>`;
+  const n = MOB() ? 3 : 4, on = s.alarms.filter(a => a.enabled), evs = s.events.filter(e => !isDeadline(e));
+  const due = [...s.tasks.upcoming_due.filter(k => k.due.slice(0, 10) === S.date)];
+  const grid = `<div class="cal"><div class="mh">${WD1.map((c, i) => `<span class="${i > 4 ? 'we' : ''}">${c}</span>`).join('')}</div>
+    <div class="mg">${m.days.map(d => { const items = [...d.events.map(label), ...d.due.map(k => `<div class="lb d">${esc(k)}</div>`)];
+      return `<button class="mc ${d.in_month ? '' : 'out'} ${d.date === TODAY() ? 'today' : ''} ${d.date === S.date ? 'sel' : ''} ${d.skip ? 'skip' : ''} ${wdOf(d.date) > 4 ? 'we' : ''}" onclick="pickDay('${d.date}')">
+        <span class="dn num">${+d.date.slice(8)}</span>${items.slice(0, n).join('')}${items.length > n ? `<div class="lb more">+${items.length - n}</div>` : ''}</button>`; }).join('')}</div></div>`;
+  const evForm = `<details class="adder"><summary>＋ ${t('新增行程')}</summary><form class="addrow" onsubmit="event.preventDefault();const f=formData(this);act('/events','POST',{title:f.title,start:S.date+'T'+f.time,end:f.end?S.date+'T'+f.end:null,location:f.location||'',shared:f.shared?1:0})">
+      <input class="field" type="time" name="time" required><input class="field" type="time" name="end" title="${t('結束（可不填）')}">
+      <input class="field" type="text" name="title" placeholder="${t('新增行程')}" required><input class="field" type="text" name="location" placeholder="${t('地點')}" style="max-width:110px">${shareBox()}<button class="btn pri">${t('加入')}</button></form></details>`;
+  const panel = `<div class="card daypanel"><div class="dph"><div><b>${md(S.date)}</b> <span class="muted">${WDN[wdOf(S.date)]}${S.date === TODAY() ? ' · ' + t('今天') : ''}</span></div>
+      <button class="hb" onclick="go('day','${S.date}')">${t('看這天')} ›</button></div>
+    ${s.skip ? `<div class="dpnote">🚫 ${esc(s.skip.reason || t('放假'))}</div>` : ''}
+    ${P.me.alarm_mode !== 'off' ? `<div class="dpnote">⏰ ${on.length ? t('{0} 起，共 {1} 個鬧鐘', on[0].time, on.length) : t('這天沒有排鬧鐘')}</div>` : ''}
+    ${evs.length ? agenda(evs, {del: true, now: S.date === TODAY() ? nowMin() : null}) : `<div class="empty">${t('這天沒有行程')}</div>`}
+    ${due.length ? `<div class="sec">${t('截止')}</div>` + due.map(k => taskRow(k)).join('') : ''}
+    ${evForm}${othersCard(s).replace(/class="card other"/g, 'class="other in"')}</div>`;
+  return calbar(title) + `<div class="mwrap">${grid}${panel}</div>`;
+};
+VIEW.month_old = async () => {
   const m = await api('/month?d=' + S.date), first = new Date(m.month + '-01T12:00');
   const title = LANG === 'en' ? first.toLocaleDateString(LOCALE, {month: 'long', year: 'numeric'}) : `${first.getFullYear()} 年 ${first.getMonth() + 1} 月`;
   return calbar(title) + `<div class="month"><div class="mh">${WD1.map(c => `<span>${c}</span>`).join('')}</div>
@@ -538,6 +583,7 @@ VIEW.link = async () => {
   const pref = palPref(), th = document.documentElement.dataset.theme;
   const look = `<div class="card"><h3>${t('外觀')}</h3><dl class="kv">
       <dt>${t('語言')}</dt><dd><div class="seg sm"><button class="${LANG === 'zh' ? 'on' : ''}" onclick="setLang('zh')">中文</button><button class="${LANG === 'en' ? 'on' : ''}" onclick="setLang('en')">English</button></div></dd>
+      <dt>${t('風格')}</dt><dd><div class="seg sm">${[['simple', '簡約'], ['vivid', '炫彩']].map(([v, l]) => `<button class="${styleNow() === v ? 'on' : ''}" onclick="setStyle('${v}')">${t(l)}</button>`).join('')}</div></dd>
       <dt>${t('主題')}</dt><dd><div class="seg sm"><button class="${th === 'dark' ? 'on' : ''}" onclick="if('${th}'!=='dark')toggleTheme().then(render)">${t('暗色')}</button><button class="${th === 'light' ? 'on' : ''}" onclick="if('${th}'!=='light')toggleTheme().then(render)">${t('亮色')}</button></div></dd>
       <dt>${t('色系')}</dt><dd><div class="pals"><button class="palm ${pref === 'auto' ? 'on' : ''}" onclick="setPalPref('auto')" title="${t('每一頁一個顏色，日曆跟著時段和星期變')}">${t('自動搭配')}</button>
         <button class="palm ${pref === 'random' ? 'on' : ''}" onclick="setPalPref('random')" title="${t('每換一頁隨機換一個顏色')}">🎲 ${t('隨機')}</button>

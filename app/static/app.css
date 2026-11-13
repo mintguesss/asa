@@ -433,9 +433,7 @@ pre.brief{white-space:pre-wrap;font:14px/1.75 var(--font);margin:0;color:var(--i
 
 /* ---------- 觸控裝置：沒有滑鼠就沒有 hover，點一下時那些位移和發光只會卡頓、殘留，全部關掉 ---------- */
 @media (hover:none),(pointer:coarse){
-  .border-glow-card:not(.tglow)::before,.border-glow-card:not(.tglow)::after,.border-glow-card:not(.tglow)>.edge-light{display:none!important}
-  .border-glow-card.tglow::before,.border-glow-card.tglow::after,.border-glow-card.tglow>.edge-light{opacity:1!important;animation:tglow .9s ease-out forwards!important}
-  @keyframes tglow{0%{opacity:0}18%{opacity:1}100%{opacity:0}}
+  .border-glow-card::before,.border-glow-card::after,.border-glow-card>.edge-light{display:none!important}
   .nav:hover,.btn:hover,.hb:hover,.bell:hover,.tl .ev:hover,.week .col:hover,.mc:hover,.rule:hover,.wd:hover,
   .tbtn:hover,.pal:hover{transform:none}
   .bell:hover{transform:translateX(-50%)}
@@ -590,3 +588,91 @@ pre.brief{white-space:pre-wrap;font:14px/1.75 var(--font);margin:0;color:var(--i
   .calbar{flex-wrap:nowrap}
   .calbar .seg button{padding:5px 11px}
 }
+
+
+/* ================= 月曆（首頁） ================= */
+.mwrap{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px;align-items:start}
+.cal{border-radius:18px;overflow:hidden;border:1px solid rgba(var(--w),.14);background:var(--glass);backdrop-filter:blur(20px)}
+.cal .mh{display:grid;grid-template-columns:repeat(7,1fr);padding:8px 0 6px;font-size:11.5px;letter-spacing:.08em;color:var(--mute);text-align:center;border-bottom:1px solid rgba(var(--w),.1)}
+.cal .mh .we{color:color-mix(in srgb,var(--red) 70%,var(--mute))}
+.cal .mg{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:0}
+.cal .mc{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:2px;min-width:0;min-height:108px;padding:4px 3px 5px;cursor:pointer;
+  border-right:1px solid rgba(var(--w),.07);border-bottom:1px solid rgba(var(--w),.07);transition:background .15s}
+.cal .mc:nth-child(7n){border-right:0}
+.cal .mc:hover{background:rgba(var(--w),.05)}
+.cal .mc.out{opacity:.4}
+.cal .mc.sel{background:color-mix(in srgb,var(--a1) 16%,transparent)}
+.cal .mc.skip .dn{text-decoration:line-through}
+.cal .dn{align-self:center;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:1px}
+.cal .mc.we .dn{color:color-mix(in srgb,var(--red) 75%,var(--ink))}
+.cal .mc.today .dn{background:var(--a1);color:#fff}
+.lb{font-size:11px;line-height:1.5;padding:0 5px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:clip;color:var(--ink);
+  background:color-mix(in srgb,var(--a2) 30%,transparent)}
+.lb.weekly{background:rgba(var(--w),.12);color:var(--ink2)}
+.lb.shared{background:color-mix(in srgb,var(--c,var(--a3)) 40%,transparent)}
+.lb.d{background:color-mix(in srgb,var(--red) 32%,transparent)}
+.lb.more{background:none;color:var(--mute);padding:0 4px}
+.daypanel{position:sticky;top:18px}
+.dph{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.dph b{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.dpnote{font-size:13px;color:var(--ink2);margin:0 0 8px}
+.daypanel .agenda{margin-top:4px}
+.daypanel .adder{margin-top:12px}
+.other.in{margin-top:14px;border-top:1px solid var(--line2);padding-top:12px}
+.other.in h3{font-size:13px}
+@media (max-width:820px){
+  .mwrap{grid-template-columns:1fr;gap:12px}
+  .cal{border-radius:14px}
+  .cal .mc{min-height:76px;padding:3px 1px 4px}
+  .cal .dn{width:21px;height:21px;font-size:11.5px}
+  .lb{font-size:9.5px;line-height:1.45;padding:0 3px;border-radius:3px}
+  .daypanel{position:static}
+}
+
+/* ================= 簡約風格（像 TimeTree：平面、乾淨、沒有極光和發光） ================= */
+:root[data-style=simple]{
+  --bg:#141519;--base1:#141519;--base2:#141519;--base3:#141519;--tk:0%;
+  --glass:#1f2026;--card-bg:#1f2026;--raised:#26272e;--raised2:#1c1d22;--dock:rgba(28,29,34,.96);--field:#26272e;--pop:#2a2b33;
+  --line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.06);
+  --grad:linear-gradient(var(--a1),var(--a1));
+}
+:root[data-style=simple][data-theme=light]{
+  --bg:#f5f5f7;--base1:#f5f5f7;--base2:#f5f5f7;--base3:#f5f5f7;
+  --glass:#fff;--card-bg:#fff;--raised:#fff;--raised2:#f4f4f6;--dock:rgba(255,255,255,.97);--field:#fff;--pop:#fff;
+  --line:rgba(20,20,40,.1);--line2:rgba(20,20,40,.06);
+}
+[data-style=simple] html,:root[data-style=simple]{background:var(--bg)}
+[data-style=simple] #aurora{display:none}
+[data-style=simple] .card,[data-style=simple] .cal,[data-style=simple] .runway,[data-style=simple] .week .col,[data-style=simple] .q,
+[data-style=simple] .month,[data-style=simple] .wrow,[data-style=simple] .rule,[data-style=simple] .tcard{
+  background:var(--glass);backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;border:1px solid var(--line)}
+[data-style=simple][data-theme=light] .card,[data-style=simple][data-theme=light] .cal{box-shadow:0 1px 2px rgba(20,20,40,.05)}
+[data-style=simple] .border-glow-card::before,[data-style=simple] .border-glow-card::after,[data-style=simple] .border-glow-card>.edge-light{display:none!important}
+[data-style=simple] .date span{background:none;-webkit-text-fill-color:var(--ink)}
+[data-style=simple] .date::after{display:none}
+[data-style=simple] .cmd:focus-within{background:var(--a1);animation:none;box-shadow:none}
+[data-style=simple] .cmd .spark{animation:none}
+[data-style=simple] .seg::before,[data-style=simple] .dock .ind{background:var(--a1);box-shadow:none}
+[data-style=simple] .seg button.on{color:#fff}
+[data-style=simple] .btn.pri,[data-style=simple] .btn.sun{background:var(--a1);color:#fff;box-shadow:none}
+[data-style=simple] .chk.on{box-shadow:none}
+[data-style=simple] .chk .fill{background:var(--a1)}
+[data-style=simple] .chk svg{stroke:#fff}
+[data-style=simple] .nav.on{color:#fff}
+[data-style=simple][data-theme=light] .dock .ind{background:var(--a1)}
+[data-style=simple] .dock,[data-style=simple] .tbtn,[data-style=simple] .hb,[data-style=simple] .seg,[data-style=simple] .cmd input{backdrop-filter:none;-webkit-backdrop-filter:none}
+[data-style=simple] .enter .card,[data-style=simple] .enter .col,[data-style=simple] .enter .tcard,[data-style=simple] .enter .hero>*,
+[data-style=simple] .enter .mc,[data-style=simple] .enter .rule,[data-style=simple] .enter .wrow,[data-style=simple] .enter .q{animation:fadein .25s ease both;animation-delay:0s}
+@keyframes fadein{from{opacity:0}}
+[data-style=simple] .bell{box-shadow:none}
+[data-style=simple] .tcard{animation:none;padding:0}
+[data-style=simple] .lb{color:#fff;background:var(--a1)}
+[data-style=simple] .lb.weekly{background:color-mix(in srgb,var(--ink) 45%,transparent)}
+[data-style=simple] .lb.shared{background:var(--c,var(--a3));color:#111}
+[data-style=simple] .lb.d{background:var(--red)}
+[data-style=simple] .lb.more{background:none;color:var(--mute)}
+[data-style=simple] .cal .mc.sel{background:color-mix(in srgb,var(--a1) 12%,transparent)}
+
+.calbar .hb,.calbar .ttl{white-space:nowrap}
+.calbar .ttl small{font-size:.62em;font-weight:500;color:var(--mute);margin-left:4px}
+@media (max-width:820px){.calbar{gap:6px}.calbar .hb{padding:6px 10px}.calbar .ttl{font-size:18px;margin-left:4px}}

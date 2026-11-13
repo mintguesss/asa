@@ -327,7 +327,10 @@ def api_month(d: str | None = None):
         out.append({
             "date": day, "in_month": day[:7] == first.isoformat()[:7],
             "skip": bool(db.one("SELECT 1 FROM skip_dates WHERE date = ?", (day,))),
-            "events": [{"time": e["time"], "title": e["title"]} for e in evs if not e["title"].startswith("⏰")],
+            "events": [{"time": e["time"], "title": e["title"],
+                        "kind": "weekly" if e.get("source") == "weekly" else "shared" if e.get("shared") or e.get("owner") else "mine",
+                        "color": (profiles.get(e["owner"]) or {}).get("color") if e.get("owner") else None}
+                       for e in evs if not e["title"].startswith("⏰")],
             "due": [t["title"] for t in db.rows("SELECT title FROM tasks WHERE done=0 AND substr(due,1,10)=?", (day,))],
             "tasks": db.one("SELECT COUNT(*) n FROM tasks WHERE done=0 AND scope='day' AND plan_date=?", (day,))["n"],
             "alarm": on[0] if on else None, "alarms": len(on),

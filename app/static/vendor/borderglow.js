@@ -9,14 +9,6 @@
     aim(e);
   }, { passive: true });
 
-  /* 觸控：點一下卡片，邊框從手指那一側亮起來再淡掉（Asa 的修改） */
-  document.addEventListener('pointerdown', e => {
-    if (e.pointerType === 'mouse') return;
-    const card = aim(e); if (!card) return;
-    card.classList.remove('tglow'); void card.offsetWidth; card.classList.add('tglow');
-    clearTimeout(card._tg); card._tg = setTimeout(() => card.classList.remove('tglow'), 900);
-  }, { passive: true });
-
   function aim(e) {
     const card = e.target.closest && e.target.closest('.border-glow-card');
     if (!card) return;
