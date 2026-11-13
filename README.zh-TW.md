@@ -87,7 +87,9 @@ Discord、LINE、Telegram、ntfy、自訂 Webhook，在 `.env` 填哪個就送�
 
 ## 開機自動啟動（Windows）
 
-雙擊 `install_autostart.bat`，會在「啟動」資料夾放一個捷徑。要取消就刪掉那個捷徑。
+雙擊 `install_autostart.bat`，Windows 會跳出一次系統管理員權限的確認。之後每次開機 Asa 都會在背景自動啟動：不用先登入、沒有黑色視窗、意外結束會自動重試，也不會儲存你的 Windows 密碼。
+
+要取消就雙擊 `uninstall_autostart.bat`。想看它的狀態，開「工作排程器」找名為 `Asa` 的工作。
 
 ## 介面素材來源
 

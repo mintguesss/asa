@@ -54,6 +54,10 @@ docker compose up -d
 
 Set your time zone in `docker-compose.yml` (alarm times are local times), then open `http://localhost:8787/?token=<PHONE_TOKEN from .env>`. Set `PUBLIC_URL` in `.env` so links in notifications and the phone setup page point at the host, not the container.
 
+### Start with Windows
+
+Run `install_autostart.bat` (asks for administrator rights once). It registers a Task Scheduler task that starts Asa in the background at boot — before login, no console window, restarted if it crashes, no password stored. `uninstall_autostart.bat` removes it.
+
 ### Access
 
 Requests from the same machine are trusted; every other device must send the access code (`?token=…` once in the browser, or the `X-Token` header). Don't expose the port to the public internet — use your LAN or a private network such as Tailscale.
