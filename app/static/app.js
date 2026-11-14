@@ -944,7 +944,8 @@ const TOUCH = matchMedia('(hover:none),(pointer:coarse)').matches;
 const CALM = matchMedia('(prefers-reduced-motion:reduce)').matches;
 document.addEventListener('pointerdown', e => {
   if (e.pointerType === 'mouse' || CALM) return;
-  const el = e.target.closest('.btn,.hb,.nav,.mc,.task,.ag,.pal,.palm,.seg button,.tbtn,.d,.wd,.bell');
+  // 色系按鈕不加漣漪：圓點旁邊沒有邊界，漣漪會放大蓋住其他圓點，看起來像整排在閃
+  const el = e.target.closest('.btn,.hb,.nav,.mc,.task,.ag,.seg button,.tbtn,.d,.wd,.bell');
   if (!el) return;
   const r = el.getBoundingClientRect(), s = Math.max(r.width, r.height) * 2.2;
   const w = document.createElement('span');

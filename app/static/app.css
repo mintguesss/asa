@@ -985,3 +985,7 @@ input.tp{cursor:pointer;caret-color:transparent}
 /* 天氣格子小一點 */
 .wxnow{margin:0 0 8px;gap:8px}.wxnow b{font-size:24px}.wxnow .wxi{font-size:22px}
 .wxh{gap:5px}.wxc{width:44px;padding:6px 0;gap:2px;border-radius:12px;font-size:11px}.wxc .wxi{font-size:16px}.wxc b{font-size:13px}.wxc .rain{font-size:10px;min-height:12px}
+
+/* 色系圓點：自己一層，換色時不跟著整張卡片重畫 */
+.pals{transform:translateZ(0)}
+.pal{transition:box-shadow .2s ease,transform .2s ease}
