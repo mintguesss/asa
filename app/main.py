@@ -14,7 +14,7 @@ from pathlib import Path
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import closures, commute, core, db, demo, i18n, insights, notify, profiles, quick, social, sources, wake
@@ -644,16 +644,58 @@ def del_alarm(id_: int):
 
 
 # ---------- 手機端（存取碼由 guard 檢查）----------
-@app.get("/api/phone/alarms")
-def phone_alarms():
-    """手機抓取：今天還沒到的 + 明天的所有啟用鬧鐘。"""
-    now = datetime.now()
+def phone_list(now: datetime) -> list[dict]:
+    """手機該排的鬧鐘：今天還沒到的 + 明天的所有啟用鬧鐘。"""
     hm_now = now.strftime("%H:%M")
     out = [a for a in core.plan(today()) if a["enabled"] and a["time"] > hm_now]
-    out += [a for a in core.plan(tomorrow()) if a["enabled"]]
+    return out + [a for a in core.plan(tomorrow()) if a["enabled"]]
+
+
+@app.get("/api/phone/alarms")
+def phone_alarms():
+    now = datetime.now()
+    out = phone_list(now)
     db.kv_set("phone_last_sync", now.isoformat(timespec="minutes"))
-    return {"server_time": now.isoformat(timespec="seconds"),
+    db.kv_set("phone_keys", ",".join(f"{a['date']}T{a['time']}" for a in out))
+    return {"server_time": now.isoformat(timespec="seconds"), "awake": bool(wake.awake_at(today())),
             "alarms": [{"date": a["date"], "time": a["time"], "label": tr("起床") if a["label"] in ("", "起床") else a["label"]} for a in out]}
+
+
+@app.get("/api/alarms/phone")
+def phone_state():
+    """網頁用：手機有沒有拿到最新的鬧鐘。"""
+    now = datetime.now()
+    want = [f"{a['date']}T{a['time']}" for a in phone_list(now)]
+    cut = now.strftime("%Y-%m-%dT%H:%M")
+    got = [k for k in (db.kv_get("phone_keys") or "").split(",") if k > cut]
+    last = db.kv_get("phone_last_sync")
+    return {"mode": profiles.current()["alarm_mode"], "last": last, "count": len(want),
+            "synced": bool(last) and sorted(want) == sorted(got)}
+
+
+APK = ROOT.parent / "android" / "AsaAlarm.apk"
+
+
+@app.get("/download/asa.apk")
+def download_apk():
+    if not APK.exists():
+        raise HTTPException(404, tr("還沒有打包好的 App：在電腦上執行 android/build_apk.ps1"))
+    return FileResponse(APK, media_type="application/vnd.android.package-archive", filename="Asa.apk")
+
+
+@app.get("/phone")
+def phone_page():
+    """把 Asa 裝到手機的說明頁（從設定頁連過來，或在網址帶 ?token=）。"""
+    from urllib.parse import quote
+    url = (server_urls() or [""])[0]
+    tok = profiles.token_of(profiles.current())
+    deep = f"asa://setup?url={quote(url, safe='')}&token={quote(tok, safe='')}"
+    h = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace('"', "&quot;")
+    page = (ROOT / "static" / "phone.html").read_text(encoding="utf-8")
+    for k, v in {"{{URL}}": h(url), "{{TOKEN}}": h(tok), "{{DEEP}}": h(deep),
+                 "{{APK}}": "1" if APK.exists() else ""}.items():
+        page = page.replace(k, v)
+    return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/phone/log")

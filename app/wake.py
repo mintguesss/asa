@@ -8,7 +8,7 @@
 - 起床、被叫都記在動態裡，不另外推播（不然一早手機一直響）。
 """
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from . import db, notify, profiles, social
 from .i18n import tr
@@ -86,6 +86,9 @@ def mark_awake(source: str = "web") -> str:
 def on_awake(now: datetime | None = None) -> None:
     now = now or datetime.now()
     db.kv_set("nudge", "")
+    until = min(now + timedelta(minutes=WINDOW), now.replace(hour=23, minute=59))
+    db.run("UPDATE alarm_plan SET enabled = 0 WHERE date = ? AND enabled = 1 AND time > ? AND time <= ?",
+           (now.date().isoformat(), now.strftime("%H:%M"), until.strftime("%H:%M")))
     if db.kv_get("awake_logged") != now.date().isoformat():
         db.kv_set("awake_logged", now.date().isoformat())
         social.log("awake", now.strftime("%H:%M"), db.me(), None)

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Asa · 手機</title>
+<style>
+  :root { --bg: #14122b; --card: rgba(255,255,255,.07); --line: rgba(255,255,255,.14); --ink: #f4f2ff; --mute: #b9b4d8; --pri: #ff8a5c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: linear-gradient(160deg, #241a5e, #14122b 60%); background-color: var(--bg); color: var(--ink);
+         font: 16px/1.6 system-ui, -apple-system, "Noto Sans TC", sans-serif; min-height: 100vh; }
+  main { max-width: 520px; margin: 0 auto; padding: 28px 16px 48px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .sub { color: var(--mute); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 18px; margin-bottom: 14px; }
+  .card h2 { font-size: 15px; color: var(--mute); margin: 0 0 10px; letter-spacing: .05em; }
+  ol { margin: 0; padding-left: 22px; } li { margin: 8px 0; }
+  .btn { display: block; text-align: center; text-decoration: none; color: #1b1033; background: var(--pri); font-weight: 700;
+         border-radius: 14px; padding: 13px; margin: 10px 0; }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  code { background: rgba(0,0,0,.3); border-radius: 8px; padding: 2px 6px; word-break: break-all; font-size: 14px; }
+  .muted { color: var(--mute); font-size: 14px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>把 Asa 裝到手機</h1>
+  <p class="sub">手機上的 Asa 會在鬧鐘時間全螢幕響鈴，也能看行程、待辦，全部都在同一個 App 裡。</p>
+
+  <section class="card" id="android">
+    <h2>ANDROID</h2>
+    <ol>
+      <li>下載並安裝 App。<span class="muted">如果手機問「要允許安裝不明來源的應用程式嗎」，選允許。</span>
+        <a class="btn" id="dl" href="/download/asa.apk">下載 Asa App</a>
+        <div class="muted" id="nodl" hidden>電腦上還沒打包好 App，請先在電腦執行 <code>android/build_apk.ps1</code>。</div></li>
+      <li>裝好之後回到這一頁，點下面的按鈕，網址和存取碼會自動填好。
+        <a class="btn ghost" href="{{DEEP}}">打開 App 並自動設定</a></li>
+      <li>依 App 的提示開好權限（通知、精確鬧鐘、鎖定畫面全螢幕）。</li>
+    </ol>
+  </section>
+
+  <section class="card" id="ios">
+    <h2>IPHONE</h2>
+    <p style="margin-top:0">iPhone 不能裝這個 App，可以這樣用：</p>
+    <ol>
+      <li>用 Safari 打開這一頁，按下方「分享」→「加入主畫面」，就有一個 Asa 圖示。</li>
+      <li>鬧鐘改用推播叫你：在 Asa 的「設定」把「起床方式」選「用推播叫」，再設定一個通知管道（例如 ntfy）。</li>
+    </ol>
+  </section>
+
+  <section class="card" id="desk" hidden>
+    <h2>正在用電腦看？</h2>
+    <p style="margin-top:0">用手機的瀏覽器打開這個網址，再照上面的步驟：</p>
+    <p><code>{{URL}}/phone?token={{TOKEN}}</code></p>
+  </section>
+
+  <section class="card">
+    <h2>手動填寫</h2>
+    <p class="muted" style="margin-top:0">自動設定沒反應的話，在 App 裡填：</p>
+    <p>伺服器網址<br><code>{{URL}}</code></p>
+    <p style="margin-bottom:0">存取碼<br><code>{{TOKEN}}</code></p>
+  </section>
+  <p class="muted"><a href="/" style="color:var(--mute)">← 回到 Asa</a></p>
+</main>
+<script>
+  const ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua), android = /Android/.test(ua);
+  if (!'{{APK}}') { document.getElementById('dl').hidden = true; document.getElementById('nodl').hidden = false; }
+  if (ios) document.getElementById('android').hidden = true;
+  if (android) document.getElementById('ios').hidden = true;
+  if (!ios && !android) document.getElementById('desk').hidden = false;
+</script>
+</body>
+</html>

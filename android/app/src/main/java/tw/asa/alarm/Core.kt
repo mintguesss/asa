@@ -50,10 +50,12 @@ object Store {
 
     fun status(c: Context): String = p(c).getString("status", tr("還沒同步過", "Never synced")) ?: ""
     fun setStatus(c: Context, s: String) { p(c).edit().putString("status", s).apply() }
+    fun lastOk(c: Context): Boolean = p(c).getBoolean("lastOk", false)
+    fun setLastOk(c: Context, ok: Boolean) { p(c).edit().putBoolean("lastOk", ok).apply() }
 
-    /** 按下「我醒了」之後，這個時間點之前的鬧鐘都不再響。 */
-    fun awakeUntil(c: Context): Long = p(c).getLong("awakeUntil", 0L)
-    fun setAwakeUntil(c: Context, t: Long) { p(c).edit().putLong("awakeUntil", t).apply() }
+    /** 按下「我醒了」時取消掉的鬧鐘（date T time）。之後才新加的不在裡面，照樣會響。 */
+    fun skipped(c: Context): Set<String> = p(c).getStringSet("skipped", emptySet()) ?: emptySet()
+    fun setSkipped(c: Context, keys: Set<String>) { p(c).edit().putStringSet("skipped", HashSet(keys)).apply() }
 
     /** 起床時段：到這個時間點之前，每分鐘問電腦一次「有沒有人在叫我」。 */
     fun nudgeUntil(c: Context): Long = p(c).getLong("nudgeUntil", 0L)
@@ -135,8 +137,8 @@ object Scheduler {
     /** 還沒響、也沒被「我醒了」取消的鬧鐘。 */
     fun upcoming(c: Context): List<AlarmItem> {
         val now = System.currentTimeMillis()
-        val skip = Store.awakeUntil(c)
-        return Store.alarms(c).filter { it.millis > now && it.millis > skip }
+        val skip = Store.skipped(c)
+        return Store.alarms(c).filter { it.millis > now && it.key !in skip }
     }
 
     private fun setExact(c: Context, at: Long, pi: PendingIntent) {
@@ -157,7 +159,10 @@ object Scheduler {
     fun sync(c: Context): String {
         val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("MM/dd HH:mm"))
         val msg = try {
-            val arr = JSONObject(Api.get(c, "/api/phone/alarms")).getJSONArray("alarms")
+            val js = JSONObject(Api.get(c, "/api/phone/alarms"))
+            val arr = js.getJSONArray("alarms")
+            // 電腦已經知道我醒了：它會把那幾個鬧鐘關掉，清單裡還有的就是後來新加或重新打開的
+            if (js.optBoolean("awake")) Store.setSkipped(c, emptySet())
             val fresh = ArrayList<AlarmItem>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
@@ -167,9 +172,11 @@ object Scheduler {
             for (old in Store.alarms(c)) if (old.key !in keys) cancel(c, old)
             Store.setAlarms(c, fresh)
             scheduleAll(c)
+            Store.setLastOk(c, true)
             tr("已同步 $stamp，接下來有 ${upcoming(c).size} 個鬧鐘", "Synced $stamp, ${upcoming(c).size} alarms ahead")
         } catch (e: Exception) {
             scheduleAll(c)
+            Store.setLastOk(c, false)
             tr("同步失敗 $stamp：${e.message ?: e.javaClass.simpleName}（沿用上次的鬧鐘）", "Sync failed $stamp: ${e.message ?: e.javaClass.simpleName} (keeping the last alarms)")
         }
         Store.setStatus(c, msg)
@@ -182,12 +189,13 @@ object Scheduler {
         am(c).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + SYNC_INTERVAL, pi)
     }
 
-    /** 「我醒了」：取消接下來 3 小時內的鬧鐘，回傳取消了幾個。 */
+    /** 「我醒了」：取消接下來 3 小時內已經排好的鬧鐘，回傳取消了幾個。 */
     fun markAwake(c: Context): Int {
         val until = System.currentTimeMillis() + AWAKE_WINDOW
         val rest = upcoming(c).filter { it.millis <= until }
         for (item in rest) cancel(c, item)
-        Store.setAwakeUntil(c, until)
+        val today = java.time.LocalDate.now().toString()
+        Store.setSkipped(c, Store.skipped(c).filter { it >= today }.toSet() + rest.map { it.key })
         stopNudgeWatch(c)
         return rest.size
     }

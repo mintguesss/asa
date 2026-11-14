@@ -50,6 +50,15 @@ const EN = {
   '分': 'min', '個': '', '那天沒有行程時從幾點開始響；留空就不排鬧鐘': 'Start time on days with nothing scheduled; empty = no alarms',
   '從第一個到最後一個共 {0} 分鐘': '{0} min from first to last', '套用': 'Apply', '已套用': 'Applied', '新增規則': 'New rule', '新規則': 'New rule',
   '起床紀錄': 'Wake-up log',
+  '已過': 'Past', '手動': 'Manual', '依規則': 'From rules', '會響': 'On', '已關閉': 'Off', '已加入': 'Added', '加鬧鐘': 'Add alarm',
+  '照下面的規則重新排這天的鬧鐘（手動加的會留著）': 'Re-plan this day from the rules below (manual alarms stay)',
+  '手機 App 還沒連上過，鬧鐘不會響。': 'The phone app has never connected, so alarms won\'t ring.',
+  '把 Asa 裝到手機': 'Set up Asa on your phone',
+  '手機已同步（{0}），接下來會響 {1} 個': 'Phone synced ({0}), {1} alarms ahead',
+  '手機還沒拿到最新的鬧鐘（上次同步 {0}）。打開手機上的 Asa 就會同步。': 'Your phone doesn\'t have the latest alarms yet (last sync {0}). Open Asa on the phone to sync.',
+  '手機 App': 'Phone app', '你正在用 Asa App：鬧鐘會在時間到時全螢幕響鈴。': 'You\'re using the Asa app: alarms ring full-screen on time.',
+  'App 設定（權限、測試鬧鐘、連線）': 'App settings (permissions, test alarm, connection)',
+  'Android 手機裝 Asa App，鬧鐘才會在鎖定畫面響鈴；iPhone 改用推播叫你。': 'Install the Asa app on Android so alarms ring on the lock screen; on iPhone, Asa wakes you with push notifications.',
   // 固定行程
   '每週固定行程': 'Weekly events', '名稱（課、班、健身…）': 'Name (class, shift, gym…)',
   // 設定

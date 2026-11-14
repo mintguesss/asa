@@ -21,12 +21,17 @@ if (['day', 'week', 'month'].includes(QS.get('view'))) S.view = S.cal = QS.get('
 else if (['tasks', 'inbox', 'alarms', 'weekly', 'link', 'activity'].includes(QS.get('view'))) S.view = QS.get('view');
 if (/^\d{4}-\d{2}-\d{2}$/.test(QS.get('date') || '')) S.date = QS.get('date');
 
+const NATIVE = !!window.AsaNative;
+let syncT = 0;
+function nativeSync() { if (NATIVE) { clearTimeout(syncT); syncT = setTimeout(() => { try { AsaNative.sync(); } catch { /* 舊版 App */ } }, 400); } }
+window.onNativeSync = () => { if (S.view === 'alarms' || S.view === 'link') render(); };   // App 同步完會呼叫
 async function api(path, method = 'GET', body) {
   const r = await fetch('/api' + path, {method, headers: {'X-Lang': LANG, ...(body ? {'Content-Type': 'application/json'} : {})}, body: body ? JSON.stringify(body) : undefined});
   if (!r.ok) {
     let m = await r.text(); try { m = JSON.parse(m).detail || m; } catch { /* 不是 JSON 就照原樣 */ }
     toast(r.status === 409 || r.status === 404 ? m : t('操作失敗：') + String(m).slice(0, 120)); throw new Error(r.status);
   }
+  if (method !== 'GET') nativeSync();
   return r.json();
 }
 function toast(msg) {
@@ -709,11 +714,34 @@ function ruleCard(r) {
       ${follow ? time('沒行程時', 'fixed_time', r.fixed_time, t('那天沒有行程時從幾點開始響；留空就不排鬧鐘')) : ''}</div>
     <div class="dots" title="${t('從第一個到最後一個共 {0} 分鐘', span)}">${Array.from({length: n}, (_, i) => (i ? `<s style="width:${gap}px"></s>` : '') + `<i style="--i:${i}"></i>`).join('')}<span class="num">${t('{0} 分鐘', span)}</span></div></div>`;
 }
+function phoneLine(ph) {
+  if (ph.mode !== 'app') return '';
+  const when = ph.last ? (ph.last.slice(0, 10) === TODAY() ? ph.last.slice(11, 16) : md(ph.last) + ' ' + ph.last.slice(11, 16)) : '';
+  if (!ph.last) return `<div class="phone no">📱 ${t('手機 App 還沒連上過，鬧鐘不會響。')} <a href="/phone">${t('把 Asa 裝到手機')}</a></div>`;
+  if (ph.synced) return `<div class="phone ok">📱 ${t('手機已同步（{0}），接下來會響 {1} 個', when, ph.count)}</div>`;
+  return `<div class="phone no">📱 ${t('手機還沒拿到最新的鬧鐘（上次同步 {0}）。打開手機上的 Asa 就會同步。', when)}</div>`;
+}
+function alarmList(al, d) {
+  const src = a => a.source === 'manual' ? t('手動') : t('依規則');
+  const past = a => d === TODAY() && mins(a.time) <= nowMin();
+  const rows = al.map(a => `<div class="arow ${a.enabled ? '' : 'off'} ${past(a) ? 'past' : ''}"><b class="num">${a.time}</b>
+      <span class="muted">${past(a) ? t('已過') + ' · ' : ''}${esc(a.label && a.label !== '起床' ? a.label : src(a))}</span><span class="sp"></span>
+      <button class="sw ${a.enabled ? 'on' : ''}" title="${a.enabled ? t('會響') : t('已關閉')}" aria-label="${a.enabled ? t('會響') : t('已關閉')}" onclick="act('/alarms/plan/${a.id}','PATCH',{enabled:${a.enabled ? 0 : 1}})"><i></i></button>
+      <button class="x" title="${t('刪除')}" aria-label="${t('刪除')}" onclick="act('/alarms/plan/${a.id}','DELETE')">✕</button></div>`).join('');
+  return `<div class="alist">${rows || `<div class="muted empty">${t('這天沒有排鬧鐘')}</div>`}</div>
+    <form class="addrow aadd" onsubmit="event.preventDefault();act('/alarms/plan','POST',{date:'${d}',time:this.time.value},'${t('已加入')}')">
+      <input class="field" type="time" name="time" required><button class="btn pri">＋ ${t('加鬧鐘')}</button>
+      <button type="button" class="btn ghost" title="${t('照下面的規則重新排這天的鬧鐘（手動加的會留著）')}" onclick="act('/alarms/plan/regenerate?d=${d}','POST',null,'${t('已依規則重排')}')">${t('重排')}</button></form>`;
+}
+function alarmDay(v) { S.aday = v; render(); }
 VIEW.alarms = async () => {
-  const tm = shift(TODAY(), 1);
-  const [rules, s, p, ins, cm] = await Promise.all([api('/alarms/rules'), api('/day?d=' + tm), api('/alarms/plan'), api('/alarms/insights'), api('/commute')]);
+  const td = TODAY(), tm = shift(td, 1);
+  if (!S.aday) S.aday = new Date().getHours() < 12 ? 'td' : 'tm';
+  const d = S.aday === 'td' ? td : tm;
+  const [rules, s, p, ins, cm, ph] = await Promise.all([api('/alarms/rules'), api('/day?d=' + tm), api('/alarms/plan?d=' + d), api('/alarms/insights'), api('/commute'), api('/alarms/phone')]);
   const tips = ins.suggestions.filter(k => k.patch);
-  return `<section class="hero"><div class="eyebrow">${t('明天')} · ${md(tm)} ${WDN[wdOf(tm)]}</div>${runway(s)}
+  return `<section class="hero"><div class="seg sm aday">${[['td', '今天', td], ['tm', '明天', tm]].map(([v, l, x]) => `<button class="${S.aday === v ? 'on' : ''}" onclick="alarmDay('${v}')">${t(l)} <span class="num">${md(x)}</span></button>`).join('')}</div>
+      ${alarmList(p.alarms, d)}${phoneLine(ph)}
       ${p.preview_reason ? `<div class="why">${esc(p.preview_reason)}</div>` : ''}</section>
     ${tips.map(k => `<div class="tip" title="${esc(k.text)}"><span>💡</span><div><b>${esc(k.rule)}</b>　${esc(k.short || k.text)}</div>
       <button class="btn sun" onclick='act("/alarms/rules/${k.rule_id}","PATCH",${JSON.stringify(k.patch)},"${t('已套用')}")'>${t('套用')}</button></div>`).join('')}
@@ -752,7 +780,7 @@ async function addWeekly(f) {
 /* ---------- 設定 ---------- */
 const sent = r => { const ok = Object.entries(r).filter(([, v]) => v !== '未設定'); toast(ok.length ? ok.map(([k, v]) => `${k}: ${v}`).join(' | ') : t('還沒有設定任何通知管道')); };
 VIEW.link = async () => {
-  const [st, br] = await Promise.all([api('/status'), api('/brief')]);
+  const [st, br, ph] = await Promise.all([api('/status'), api('/brief'), api('/alarms/phone')]);
   const url = st.urls[0] || `http://${t('這台電腦的IP')}:${location.port || 80}`;
   const pref = palPref(), th = document.documentElement.dataset.theme;
   const look = `<div class="card"><h3>${t('外觀')}</h3><dl class="kv">
@@ -799,7 +827,12 @@ VIEW.link = async () => {
       <pre class="brief">${esc(br.text)}</pre>
       <div class="addrow"><button class="btn" onclick="api('/notify/brief','POST').then(r=>sent(r.result))">${t('現在推播')}</button></div></details>
     <div class="muted" style="margin-top:14px">${t('設定都在 .env，改完重新啟動才會生效。')}</div></div>`;
-  return `<div class="cols"><div class="stack">${members}</div><div class="stack">${look}${more}</div></div>`;
+  const phone = `<div class="card"><h3>${t('手機 App')}</h3>${NATIVE
+      ? `<div class="muted">${t('你正在用 Asa App：鬧鐘會在時間到時全螢幕響鈴。')}</div>${phoneLine(ph)}
+         <div class="addrow"><button class="btn pri" onclick="AsaNative.openSetup()">${t('App 設定（權限、測試鬧鐘、連線）')}</button></div>`
+      : `<div class="muted">${t('Android 手機裝 Asa App，鬧鐘才會在鎖定畫面響鈴；iPhone 改用推播叫你。')}</div>${phoneLine(ph)}
+         <div class="addrow"><a class="btn pri" href="/phone">${t('把 Asa 裝到手機')}</a></div>`}</div>`;
+  return `<div class="cols"><div class="stack">${phone}${members}</div><div class="stack">${look}${more}</div></div>`;
 };
 
 /* ---------- 頂列：指令列、語言、亮暗 ---------- */

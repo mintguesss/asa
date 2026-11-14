@@ -874,3 +874,15 @@ pre.brief{white-space:pre-wrap;font:14px/1.75 var(--font);margin:0;color:var(--i
   .wakebar{flex-direction:column;align-items:stretch;text-align:center}
   .wakebar .btn{padding:12px}
 }
+
+/* 鬧鐘頁：今天／明天的鬧鐘清單 */
+.aday{margin-bottom:12px}.aday .num{opacity:.7;margin-left:4px}
+.alist{display:flex;flex-direction:column;gap:8px}
+.arow{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:16px;background:var(--glass);border:1px solid rgba(var(--w),.16)}
+.arow b{font-size:22px;font-weight:650;color:var(--hi)}.arow .sp{flex:1}
+.arow.off b{opacity:.45;text-decoration:line-through}
+.arow .x{background:none;border:0;color:var(--ink2);font-size:16px;padding:6px 8px;cursor:pointer;border-radius:10px}
+.alist .empty{padding:10px 2px}
+.aadd{margin-top:12px}.aadd input[type=time]{max-width:140px}
+.phone{margin-top:12px;font-size:13.5px;color:var(--ink2)}.phone.no{color:var(--hi)}.phone a{color:inherit;text-decoration:underline}
+.arow.past{opacity:.55}
