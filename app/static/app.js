@@ -193,6 +193,7 @@ async function render(quiet) {
   if (!bare()) $('#mtitle').innerHTML = '';
   $('#view').innerHTML = html;
   decorate();
+  fitHome();
   window.scrollTo(0, y);
 }
 
@@ -1176,3 +1177,22 @@ function wxCard(wx) {
     <div class="wxh">${hs.map((h, i) => `<div class="wxc ${h.date !== TODAY() ? 'tm' : ''}"><span class="muted num">${i ? (h.time === '00:00' ? t('明天') : +h.time.slice(0, 2) + t('時')) : t('現在')}</span>
       <span class="wxi">${h.icon}</span><b class="num">${h.temp}°</b><span class="rain num">${h.rain >= 20 ? h.rain + '%' : ''}</span></div>`).join('')}</div></div>`;
 }
+
+
+/* 手機首頁：把行程卡片撐高，讓「今天天氣」的下緣剛好停在導覽列上方一點點 */
+function fitHome() {
+  const st = document.querySelector('#view .cols > .stack');
+  if (!st || S.view !== 'day' || !MOB()) return;
+  const ev = st.querySelector('.card'), dock = $('#rail')?.closest('.dock') || document.querySelector('.dock');
+  if (!ev || !dock) return;
+  ev.style.minHeight = '';
+  let y = 0; for (let el = st; el; el = el.offsetParent) y += el.offsetTop;     // 不受進場動畫位移影響
+  const extra = dock.getBoundingClientRect().top - 10 - (y + st.offsetHeight);
+  if (extra > 0) ev.style.minHeight = ev.offsetHeight + extra + 'px';
+  else if (extra < 0) {                             // 稍微超出：先把「沒有行程」上下的留白縮掉
+    const em = ev.querySelector('.empty');
+    if (em) { const cs = getComputedStyle(em), pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom), cut = Math.min(pad, -extra);
+      em.style.paddingTop = em.style.paddingBottom = Math.max(0, (pad - cut) / 2) + 'px'; }
+  }
+}
+addEventListener('resize', () => { clearTimeout(S.fitT); S.fitT = setTimeout(fitHome, 150); });
