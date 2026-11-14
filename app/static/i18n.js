@@ -50,7 +50,7 @@ const EN = {
   '分': 'min', '個': '', '那天沒有行程時從幾點開始響；留空就不排鬧鐘': 'Start time on days with nothing scheduled; empty = no alarms',
   '從第一個到最後一個共 {0} 分鐘': '{0} min from first to last', '套用': 'Apply', '已套用': 'Applied', '新增規則': 'New rule', '新規則': 'New rule',
   '起床紀錄': 'Wake-up log',
-  '已過': 'Past', '分': 'min', '清除': 'Clear', '確定': 'OK', '選日期': 'Pick a date', '加一個鬧鐘': 'Add an alarm',
+  '已過': 'Past', '展開': 'Show', '收起': 'Hide', '{0} 個': '{0} alarms', '（{0} 個已關閉）': '({0} off)', '分': 'min', '清除': 'Clear', '確定': 'OK', '選日期': 'Pick a date', '加一個鬧鐘': 'Add an alarm',
   '展開每一個鬧鐘': 'Show every alarm', '點一下看每一個的時間': 'Tap to see each time', '前 {0} 分': '{0} min before',
   '以行程開始時間往前算；例如 9:00 的課，第一個是 {0}': 'Counted back from the event; for a 9:00 class the first one is {0}',
   '編輯': 'Edit', '編輯行程': 'Edit event', '名稱': 'Title', '日期': 'Date', '備註': 'Note', '儲存': 'Save', '已儲存': 'Saved',

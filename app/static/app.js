@@ -732,7 +732,11 @@ function alarmList(al, d) {
       <span class="muted">${past(a) ? t('已過') + ' · ' : ''}${esc(a.label && a.label !== '起床' ? a.label : src(a))}</span><span class="sp"></span>
       <button class="sw ${a.enabled ? 'on' : ''}" title="${a.enabled ? t('會響') : t('已關閉')}" aria-label="${a.enabled ? t('會響') : t('已關閉')}" onclick="act('/alarms/plan/${a.id}','PATCH',{enabled:${a.enabled ? 0 : 1}})"><i></i></button>
       <button class="x" title="${t('刪除')}" aria-label="${t('刪除')}" onclick="act('/alarms/plan/${a.id}','DELETE')">✕</button></div>`).join('');
-  return `<div class="alist">${rows || `<div class="muted empty">${t('這天沒有排鬧鐘')}</div>`}</div>
+  const on = al.filter(a => a.enabled);
+  const sum = al.length ? `<button class="asum" onclick="S.alOpen=!S.alOpen;this.parentNode.classList.toggle('open',S.alOpen)">
+      <b class="num">${on.length ? on[0].time : '—'}</b><span class="muted num">${t('{0} 個', on.length)}${on.length > 1 ? '　→ ' + on[on.length - 1].time : ''}${al.length > on.length ? '　' + t('（{0} 個已關閉）', al.length - on.length) : ''}</span>
+      <span class="sp"></span><span class="tg">${t('展開')} ⌄</span><span class="tg2">${t('收起')} ⌃</span></button>` : '';
+  return `<div class="afold ${S.alOpen ? 'open' : ''}">${sum}<div class="alist">${rows || `<div class="muted empty">${t('這天沒有排鬧鐘')}</div>`}</div></div>
     <form class="addrow aadd" onsubmit="event.preventDefault();act('/alarms/plan','POST',{date:'${d}',time:this.time.value},'${t('已加入')}')">
       <input class="field" type="time" name="time" required><button class="btn pri">＋ ${t('加鬧鐘')}</button>
       <button type="button" class="btn ghost" title="${t('照下面的規則重新排這天的鬧鐘（手動加的會留著）')}" onclick="act('/alarms/plan/regenerate?d=${d}','POST',null,'${t('已依規則重排')}')">${t('重排')}</button></form>`;
