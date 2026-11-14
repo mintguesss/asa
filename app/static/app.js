@@ -23,7 +23,10 @@ if (/^\d{4}-\d{2}-\d{2}$/.test(QS.get('date') || '')) S.date = QS.get('date');
 
 async function api(path, method = 'GET', body) {
   const r = await fetch('/api' + path, {method, headers: {'X-Lang': LANG, ...(body ? {'Content-Type': 'application/json'} : {})}, body: body ? JSON.stringify(body) : undefined});
-  if (!r.ok) { toast(t('操作失敗：') + (await r.text()).slice(0, 120)); throw new Error(r.status); }
+  if (!r.ok) {
+    let m = await r.text(); try { m = JSON.parse(m).detail || m; } catch { /* 不是 JSON 就照原樣 */ }
+    toast(r.status === 409 || r.status === 404 ? m : t('操作失敗：') + String(m).slice(0, 120)); throw new Error(r.status);
+  }
   return r.json();
 }
 function toast(msg) {
@@ -346,9 +349,34 @@ function saying(s) {
   if (x.overdue.length) parts.push(t('{0} 項逾期', x.overdue.length));
   return parts.map(esc).join('　·　');
 }
+/* ---------- 互相叫起床 ---------- */
+function wakePill(w, o) {
+  if (!w) return o.alarm ? `<span class="r muted num" title="${t('第一個鬧鐘')}">⏰ ${esc(o.alarm)}</span>` : '';
+  const btn = `<button class="btn nudge ${w.state === 'late' ? 'sun' : ''}" onclick="nudge(${o.id},'${esc(o.name).replace(/'/g, '')}')">📣 ${t('叫他起床')}</button>`;
+  if (w.state === 'awake') return `<span class="r pill teal num">☀️ ${t('{0} 起床', esc(w.at))}</span>`;
+  if (w.state === 'late') return `<span class="r wk-st"><span class="pill red">😴 ${t('還沒起床')}</span>${btn}</span>`;
+  if (w.state === 'ringing') return `<span class="r wk-st"><span class="pill sun num">⏰ ${t('鬧鐘在響')}</span>${btn}</span>`;
+  return w.first ? `<span class="r muted num" title="${t('第一個鬧鐘')}">⏰ ${esc(w.first)}</span>` : '';
+}
+async function nudge(id, name) {
+  const r = await api('/wake/nudge/' + id, 'POST');
+  toast(r.how === 'app' ? t('已叫 {0}：手機會大聲響', name) : t('已推播叫 {0}', name));
+}
+async function iAmAwake() {
+  const r = await api('/wake/awake', 'POST');
+  toast(t('早安！{0} 起床', r.at)); render();
+}
+function wakeBar(s) {
+  const w = s.wake;
+  if (!w || !['ringing', 'late'].includes(w.state)) return '';
+  return `<div class="wakebar ${w.state}"><div class="wb-t"><b>${w.state === 'late' ? t('還沒起床嗎？') : t('早安，起床了嗎？')}</b>
+      <span>${w.nudged ? '📣 ' + t('{0} 在叫你', esc(w.nudged)) : t('按下去就不會再叫你') + (P.multi ? t('，也會讓對方知道') : '')}</span></div>
+    <button class="btn sun" onclick="iAmAwake()">☀️ ${t('我醒了')}</button></div>`;
+}
 function othersCard(s) {
+  const ws = Object.fromEntries((s.wake_others || []).map(w => [w.id, w]));
   return (s.others || []).map(o => `<div class="card other"><h3>${face(o, 'sm')}${esc(o.name)}
-      ${o.alarm ? `<span class="r muted num" title="${t('第一個鬧鐘')}">⏰ ${esc(o.alarm)}</span>` : ''}</h3>
+      ${wakePill(ws[o.id], o)}</h3>
     ${o.events.length ? `<div class="agenda">${o.events.map(e => `<div class="ag"><i class="num">${esc(e.time)}${e.end_time ? `<s>${esc(e.end_time)}</s>` : ''}</i>
       <b>${e.title === null ? `<span class="muted">${t('有事')}</span>` : esc(e.title)}${e.location ? `<em>${esc(e.location)}</em>` : ''}</b></div>`).join('')}</div>`
       : `<div class="empty">${t('這天沒有行程')}</div>`}</div>`).join('');
@@ -365,7 +393,7 @@ VIEW.day = async () => {
   return `<section class="hero">${calbar('', dayOff)}
       <div class="hgrid"><div><div class="eyebrow">${WDN[wdOf(S.date)]}${isToday ? ' · ' + t('今天') : S.date === shift(TODAY(), 1) ? ' · ' + t('明天') : ''}</div>
           <h1 class="date" data-t="${dt}"><span>${dt}</span></h1>${s.skip ? `<div class="say">🚫 ${esc(s.skip.reason || t('放假'))}</div>` : ''}</div>
-        ${isToday ? '<div class="clock num" id="clock"></div>' : ''}</div>${runway(s)}</section>
+        ${isToday ? '<div class="clock num" id="clock"></div>' : ''}</div>${wakeBar(s)}${runway(s)}</section>
     <div class="cols"><div class="stack">
       <div class="card"><h3>${mob ? t('行程') : t('時間軸')}</h3>${mob ? agenda(s.events, {del: true, now: isToday ? nowMin() : null})
         : timeline(s.events, {...rangeOf([s]), alarms: s.alarms, now: isToday ? nowMin() : null})}
@@ -558,12 +586,14 @@ async function delComment(id, owner, cid) {
 
 /* ---------- 動態：其他成員新增了什麼、留了什麼言 ---------- */
 const ACT = {event_add: '新增了一起的行程', event_del: '刪除了一起的行程', task_add: '新增了共用待辦', task_done: '完成了共用待辦', comment: '留言'};
+const actLine = a => a.action === 'awake' ? `☀️ ${t('起床了')} <span class="avt num">${esc(a.title)}</span>`
+  : a.action === 'nudge' ? `📣 ${t('叫「{0}」起床', esc(a.title))}` : `${t(ACT[a.action] || a.action)}<span class="avt">「${esc(a.title)}」</span>`;
 VIEW.activity = async () => {
   const r = await api('/activity');
   const row = (a, i) => `<div class="av ${a.id > r.seen && !a.mine ? 'new' : ''} ${a.ref_id && (a.action === 'comment' || a.action === 'event_add') ? 'open' : ''}"
       ${a.ref_id && (a.action === 'comment' || a.action === 'event_add') ? `onclick="openEvent(${a.ref_id},${a.owner === P.me.id ? 0 : a.owner})"` : ''}>
     ${face({name: a.actor_name, color: a.actor_color, avatar: a.avatar}, 'md')}
-    <div class="avb"><div><b>${a.mine ? t('你') : esc(a.actor_name)}</b> ${t(ACT[a.action] || a.action)}<span class="avt">「${esc(a.title)}」</span></div>
+    <div class="avb"><div><b>${a.mine ? t('你') : esc(a.actor_name)}</b> ${actLine(a)}</div>
       ${a.body ? `<div class="avq">${esc(a.body)}</div>` : ''}<div class="muted num avtime">${whenText(a.created)}</div></div></div>`;
   return `<div class="card actlist"><h3>${t('動態')}${r.unread ? `<span class="cnt hot">${r.unread}</span>` : ''}</h3>
     ${r.items.map(row).join('') || `<div class="empty">${t('還沒有動態。新增「一起」的行程或在行程裡留言，就會出現在這裡。')}</div>`}</div>`;
@@ -634,6 +664,35 @@ function triage(ok) {
 }
 
 /* ---------- 鬧鐘 ---------- */
+/* ---------- 通勤：依地點的交通時間（下雨多留一點）自動提早鬧鐘 ---------- */
+const cset = async b => { await api('/commute', 'PATCH', b); render(); };
+async function addPlace(f) {
+  const d = formData(f);
+  if (!d.name) return;
+  if (d.minutes) await api('/commute/places', 'POST', {name: d.name, minutes: +d.minutes});
+  else { toast(t('估算中…')); const r = await api('/commute/estimate', 'POST', {location: d.name}); toast(t('估計 {0} 分鐘', r.minutes)); }
+  render();
+}
+function commuteCard(cm, s) {
+  const c = cm.settings, num = (k, max) => `<input class="field num" type="number" min="0" max="${max}" value="${c[k]}" style="width:70px" onchange="cset({${k}:+this.value})">`;
+  const known = cm.places.map(p => p.name);
+  const miss = [...new Set(s.events.map(e => e.location).filter(l => l && !known.some(k => l.includes(k) || k.includes(l))))];
+  return `<div class="card commute ${c.on ? '' : 'off'}"><h3>${t('通勤')}<span class="r"><button class="sw ${c.on ? 'on' : ''}" title="${c.on ? t('啟用中') : t('已停用')}" onclick="cset({on:${!c.on}})"><i></i></button></span></h3>
+    <div class="muted cm-tip">${t('開啟後，鬧鐘會再往前扣掉從家裡到行程地點的交通時間，預報會下雨就多留幾分鐘。規則裡的「提前」就只算準備時間（梳洗、吃早餐）。')}</div>
+    ${c.on ? `<dl class="kv">
+      <dt>${t('家的地址')}</dt><dd><input class="field" value="${esc(c.home)}" placeholder="${t('例：桃園市中壢區中大路 300 號')}" onchange="cset({home:this.value})"></dd>
+      <dt>${t('交通方式')}</dt><dd><div class="seg sm">${[['car', '機車／開車'], ['bike', '腳踏車'], ['foot', '走路']].map(([v, l]) => `<button class="${c.mode === v ? 'on' : ''}" onclick="cset({mode:'${v}'})">${t(l)}</button>`).join('')}</div></dd>
+      <dt>${t('其他地點')}</dt><dd>${num('default', 240)} <span class="muted">${t('分鐘（沒對上常用地點、也估不出來時）')}</span></dd>
+      <dt>${t('下雨多留')}</dt><dd>${num('rain', 120)} <span class="muted">${t('分鐘（降雨機率 50% 以上）')}</span></dd></dl>
+    <h4 class="cm-h">${t('常用地點')}</h4>
+    <div class="places">${cm.places.map(p => `<div class="wrow place"><b>${esc(p.name)}</b>${p.auto ? `<span class="pill">${t('自動估')}</span>` : ''}<span class="sp"></span>
+        <input class="field num" type="number" min="0" max="300" value="${p.minutes}" style="width:64px" onchange="api('/commute/places','POST',{name:${esc(JSON.stringify(p.name))},minutes:+this.value}).then(render)"><span class="muted">${t('分')}</span>
+        <button class="x" onclick="act('/commute/places/'+encodeURIComponent(${esc(JSON.stringify(p.name))}),'DELETE')" aria-label="${t('刪除')}">✕</button></div>`).join('') || `<div class="empty">${t('還沒有常用地點')}</div>`}</div>
+    ${miss.length ? `<div class="miss"><span class="muted">${t('明天的地點還沒設：')}</span>${miss.map(l => `<button class="chip" onclick="const f=document.querySelector('.cm-add');f.name.value=${esc(JSON.stringify(l))};f.minutes.focus()">${esc(l)}</button>`).join('')}</div>` : ''}
+    <form class="addrow cm-add" onsubmit="event.preventDefault();addPlace(this)"><input class="field" name="name" placeholder="${t('地點（例：理學院）')}" required>
+      <input class="field num" type="number" name="minutes" min="0" max="300" placeholder="${t('分鐘')}" style="width:80px"><button class="btn pri">${t('加入')}</button></form>
+    <div class="muted cm-tip">${t('分鐘留空會用 OpenStreetMap 自動估（不含即時路況和大眾運輸；搭捷運、公車請自己填）。地址和地點只會送去 OpenStreetMap 和 Open-Meteo 查詢。')}</div>` : ''}</div>`;
+}
 function ruleCard(r) {
   const wds = r.weekdays.split(',').filter(k => k !== '');
   const tog = i => { const s = new Set(wds); s.has(String(i)) ? s.delete(String(i)) : s.add(String(i)); return [...s].sort().join(','); };
@@ -652,13 +711,15 @@ function ruleCard(r) {
 }
 VIEW.alarms = async () => {
   const tm = shift(TODAY(), 1);
-  const [rules, s, p, ins] = await Promise.all([api('/alarms/rules'), api('/day?d=' + tm), api('/alarms/plan'), api('/alarms/insights')]);
+  const [rules, s, p, ins, cm] = await Promise.all([api('/alarms/rules'), api('/day?d=' + tm), api('/alarms/plan'), api('/alarms/insights'), api('/commute')]);
   const tips = ins.suggestions.filter(k => k.patch);
-  return `<section class="hero"><div class="eyebrow" title="${esc(p.preview_reason)}">${t('明天')} · ${md(tm)} ${WDN[wdOf(tm)]}</div>${runway(s)}</section>
+  return `<section class="hero"><div class="eyebrow">${t('明天')} · ${md(tm)} ${WDN[wdOf(tm)]}</div>${runway(s)}
+      ${p.preview_reason ? `<div class="why">${esc(p.preview_reason)}</div>` : ''}</section>
     ${tips.map(k => `<div class="tip" title="${esc(k.text)}"><span>💡</span><div><b>${esc(k.rule)}</b>　${esc(k.short || k.text)}</div>
       <button class="btn sun" onclick='act("/alarms/rules/${k.rule_id}","PATCH",${JSON.stringify(k.patch)},"${t('已套用')}")'>${t('套用')}</button></div>`).join('')}
     <div class="rules">${rules.map(ruleCard).join('')}
       <button class="rule add" onclick="act('/alarms/rules','POST',{name:'${t('新規則')}',weekdays:'',anchor:'first_event',lead_minutes:90,count:6,interval_minutes:5})"><span>＋</span>${t('新增規則')}</button></div>
+    ${commuteCard(cm, s)}
     ${ins.mornings.length ? `<details class="fold"><summary>${t('起床紀錄')}</summary><div class="card">${ins.mornings.slice(0, 10).map(m => `<div class="task"><div class="body num">${md(m.date)} ${WDN[m.weekday]}　${m.first}–${m.last}　→　<b>${m.awake}</b><span class="muted">　${m.rang}/${m.count}</span></div></div>`).join('')}</div></details>` : ''}`;
 };
 
@@ -711,6 +772,7 @@ VIEW.link = async () => {
         <dt>${t('名字')}</dt><dd><input class="field" value="${esc(p.name)}" maxlength="20" style="max-width:180px" onchange="${patch('{name:this.value}')}"></dd>
         <dt>${t('起床方式')}</dt><dd>${pick('alarm_mode', [['app', '手機 App 鬧鐘'], ['notify', '用推播叫'], ['off', '不需要']])}</dd>
         <dt>${t('行程提醒')}</dt><dd><input class="field num" type="number" min="0" max="720" value="${p.remind_minutes}" style="width:76px" onchange="${patch('{remind_minutes:+this.value}')}"> <span class="muted">${t('分鐘前推播（0 = 不提醒）')}</span></dd>
+        ${P.multi && p.alarm_mode !== 'off' ? `<dt>${t('叫不醒時')}</dt><dd><input class="field num" type="number" min="0" max="180" value="${p.buddy_minutes}" style="width:76px" onchange="${patch('{buddy_minutes:+this.value}')}"> <span class="muted">${t('分鐘後通知其他人來叫（0 = 不通知）')}</span></dd>` : ''}
         ${P.multi ? `<dt>${t('我的行程')}</dt><dd>${pick('visible', [['full', '其他人看得到'], ['busy', '只顯示有事'], ['none', '不顯示']])}</dd>
 ` : ''}</dl>
       <details class="fold in"><summary>${t('連線資訊（手機 App、手機瀏覽器）')}</summary><dl class="kv">
@@ -845,3 +907,7 @@ if (window.visualViewport) {
 }
 
 loadP().then(render);
+if (new URLSearchParams(location.search).get('awake')) {
+  history.replaceState(null, '', location.pathname);
+  api('/wake/awake', 'POST').then(r => { toast(t('早安！{0} 起床', r.at)); render(); }).catch(() => {});
+}

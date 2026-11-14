@@ -125,7 +125,13 @@ CREATE TABLE IF NOT EXISTS profiles (        -- 成員名單（只用第一位�
     visible TEXT DEFAULT 'busy',    -- 其他成員看我的行程：full / busy / none
     lang TEXT,
     notify TEXT DEFAULT '{}',       -- 這個人的通知管道設定（JSON）
-    avatar TEXT                     -- 頭貼的版本（上傳時間）；檔案在 data/asa-avatars/<id>.<副檔名>
+    avatar TEXT,                    -- 頭貼的版本（上傳時間）；檔案在 data/asa-avatars/<id>.<副檔名>
+    buddy_minutes INTEGER DEFAULT 10    -- 最後一個鬧鐘過了幾分鐘還沒醒，就通知其他成員；0 = 不通知
+);
+CREATE TABLE IF NOT EXISTS places (          -- 常用地點的交通時間（通勤自動提早鬧鐘用）
+    name TEXT PRIMARY KEY,
+    minutes INTEGER NOT NULL,
+    auto INTEGER DEFAULT 0          -- 1 = 自動估的
 );
 """
 
@@ -181,7 +187,7 @@ def init_one() -> None:
         for table, cols in (("inbox", (("end", "TEXT"), ("location", "TEXT DEFAULT ''"))),
                             ("events", (("shared", "INTEGER DEFAULT 0"),)),
                             ("tasks", (("shared", "INTEGER DEFAULT 0"),)),
-                            ("profiles", (("avatar", "TEXT"),))):
+                            ("profiles", (("avatar", "TEXT"), ("buddy_minutes", "INTEGER DEFAULT 10")))):
             have = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
             for col, ddl in cols:
                 if col not in have:

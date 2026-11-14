@@ -53,6 +53,8 @@ class AlarmService : Service() {
         )
         current = item
         val isTest = intent?.getBooleanExtra("test", false) ?: false
+        val loud = intent?.getBooleanExtra("loud", false) ?: false     // 被別人叫：一開始就大聲
+        if (loud) volume = 1f
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channel = NotificationChannel(CHANNEL, tr("鬧鐘", "Alarm"), NotificationManager.IMPORTANCE_HIGH)
@@ -83,15 +85,18 @@ class AlarmService : Service() {
             startForeground(1, notification)
         }
 
-        if (player == null) startRinging()
+        if (player == null) startRinging(loud)
         handler.removeCallbacks(timeout)
         handler.postDelayed(timeout, RING_LIMIT)
         try { startActivity(open) } catch (_: Exception) { }   // 螢幕亮著時直接開；被系統擋下也有全螢幕通知
-        if (!isTest) Api.log(this, "fired", item)
+        if (!isTest && !loud) {
+            Api.log(this, "fired", item)
+            Scheduler.startNudgeWatch(this)
+        }
         return START_NOT_STICKY
     }
 
-    private fun startRinging() {
+    private fun startRinging(loud: Boolean = false) {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "asa:alarm").apply { acquire(RING_LIMIT + 10_000L) }
 
@@ -100,7 +105,7 @@ class AlarmService : Service() {
             val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val max = audio.getStreamMaxVolume(AudioManager.STREAM_ALARM)
             val now = audio.getStreamVolume(AudioManager.STREAM_ALARM)
-            val floor = (max * 0.6f).toInt()
+            val floor = if (loud) max else (max * 0.6f).toInt()
             if (now < floor) {
                 savedVolume = now
                 audio.setStreamVolume(AudioManager.STREAM_ALARM, floor, 0)

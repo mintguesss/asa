@@ -12,27 +12,28 @@ def _env(*keys: str) -> list[str]:
     return [str(own.get(k) or (os.getenv(k, "") if db.me() == 1 else "")).strip() for k in keys]
 
 
-def _discord(text: str, hook: str):
+def _discord(text: str, hook: str, **_):
     return httpx.post(hook, json={"content": text[:1990]}, timeout=15)
 
 
-def _line(text: str, token: str, to: str):
+def _line(text: str, token: str, to: str, **_):
     return httpx.post("https://api.line.me/v2/bot/message/push",
                       headers={"Authorization": f"Bearer {token}"},
                       json={"to": to, "messages": [{"type": "text", "text": text[:4900]}]}, timeout=15)
 
 
-def _telegram(text: str, token: str, chat: str):
+def _telegram(text: str, token: str, chat: str, **_):
     return httpx.post(f"https://api.telegram.org/bot{token}/sendMessage",
                       json={"chat_id": chat, "text": text[:4000]}, timeout=15)
 
 
-def _ntfy(text: str, url: str):
-    return httpx.post(url, content=text.encode(), timeout=15)
+def _ntfy(text: str, url: str, urgent: bool = False):
+    return httpx.post(url, content=text.encode(), timeout=15,
+                      headers={"Priority": "urgent", "Tags": "alarm_clock"} if urgent else None)
 
 
-def _webhook(text: str, url: str):
-    return httpx.post(url, json={"text": text}, timeout=15)
+def _webhook(text: str, url: str, urgent: bool = False):
+    return httpx.post(url, json={"text": text, "urgent": urgent} if urgent else {"text": text}, timeout=15)
 
 
 # 代號: (顯示名稱, 需要的 .env 變數, 發送函式)
@@ -50,8 +51,8 @@ def channels() -> list[dict]:
             for k, (label, keys, _) in CHANNELS.items()]
 
 
-def send(text: str) -> dict:
-    """送到所有已設定的管道，回傳 {代號: "ok" / "未設定" / 錯誤訊息}。"""
+def send(text: str, urgent: bool = False) -> dict:
+    """送到所有已設定的管道，回傳 {代號: "ok" / "未設定" / 錯誤訊息}。urgent = 叫起床這種要馬上看到的。"""
     result = {}
     for name, (_, keys, fn) in CHANNELS.items():
         vals = _env(*keys)
@@ -59,7 +60,7 @@ def send(text: str) -> dict:
             result[name] = "未設定"
             continue
         try:
-            r = fn(text, *vals)
+            r = fn(text, *vals, urgent=urgent)
             result[name] = "ok" if r.status_code < 300 else f"失敗 {r.status_code}: {r.text[:200]}"
         except Exception as e:  # noqa: BLE001
             result[name] = f"失敗: {e}"

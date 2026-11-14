@@ -54,6 +54,10 @@ object Store {
     /** 按下「我醒了」之後，這個時間點之前的鬧鐘都不再響。 */
     fun awakeUntil(c: Context): Long = p(c).getLong("awakeUntil", 0L)
     fun setAwakeUntil(c: Context, t: Long) { p(c).edit().putLong("awakeUntil", t).apply() }
+
+    /** 起床時段：到這個時間點之前，每分鐘問電腦一次「有沒有人在叫我」。 */
+    fun nudgeUntil(c: Context): Long = p(c).getLong("nudgeUntil", 0L)
+    fun setNudgeUntil(c: Context, t: Long) { p(c).edit().putLong("nudgeUntil", t).apply() }
 }
 
 object Api {
@@ -109,6 +113,8 @@ object Api {
 object Scheduler {
     const val ACTION_FIRE = "tw.asa.alarm.FIRE"
     const val ACTION_SYNC = "tw.asa.alarm.SYNC"
+    const val ACTION_NUDGE = "tw.asa.alarm.NUDGE"
+    private const val NUDGE_EVERY = 60 * 1000L
     private const val SYNC_INTERVAL = 30 * 60 * 1000L
     private const val AWAKE_WINDOW = 3 * 60 * 60 * 1000L
     private const val FLAGS = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -182,7 +188,38 @@ object Scheduler {
         val rest = upcoming(c).filter { it.millis <= until }
         for (item in rest) cancel(c, item)
         Store.setAwakeUntil(c, until)
+        stopNudgeWatch(c)
         return rest.size
+    }
+
+    private fun nudgePi(c: Context): PendingIntent =
+        PendingIntent.getBroadcast(c, 4, Intent(c, AlarmReceiver::class.java).setAction(ACTION_NUDGE), FLAGS)
+
+    /** 鬧鐘響了之後的 3 小時內，每分鐘問一次有沒有人在叫我起床（互相叫起床）。 */
+    fun startNudgeWatch(c: Context) {
+        Store.setNudgeUntil(c, System.currentTimeMillis() + AWAKE_WINDOW)
+        nextNudgeTick(c)
+    }
+
+    fun nextNudgeTick(c: Context) {
+        if (System.currentTimeMillis() > Store.nudgeUntil(c)) return
+        am(c).setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + NUDGE_EVERY, nudgePi(c))
+    }
+
+    fun stopNudgeWatch(c: Context) {
+        Store.setNudgeUntil(c, 0L)
+        am(c).cancel(nudgePi(c))
+    }
+
+    /** 問電腦一次。要在背景執行緒呼叫。回傳叫我的人的名字（沒有就 null）。 */
+    fun checkNudge(c: Context): String? {
+        return try {
+            val js = JSONObject(Api.get(c, "/api/phone/nudge"))
+            if (js.optBoolean("awake")) {         // 在網頁上按過「我醒了」：手機這邊也取消後面的鬧鐘
+                markAwake(c)
+                null
+            } else js.optJSONObject("nudge")?.optString("from")
+        } catch (_: Exception) { null }
     }
 
     /** 幾秒後響一個測試鬧鐘。 */

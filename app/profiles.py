@@ -14,7 +14,7 @@ import time
 
 from . import db
 
-FIELDS = ["name", "color", "alarm_mode", "remind_minutes", "visible", "lang"]
+FIELDS = ["name", "color", "alarm_mode", "remind_minutes", "visible", "lang", "buddy_minutes"]
 ALARM_MODES = ("app", "notify", "off")      # App 鬧鐘 / 用推播叫 / 不需要
 VISIBLE = ("full", "busy", "none")          # 其他成員看我的行程：細節 / 只顯示有事 / 看不到
 COLORS = ["#7c5cff", "#ff7a9c", "#38e1ff", "#ffc46b", "#7cff9b"]
@@ -46,7 +46,7 @@ def get(pid: int) -> dict | None:
 
 def current() -> dict:
     return get(db.me()) or {"id": db.me(), "name": "", "color": COLORS[0], "alarm_mode": "app",
-                            "remind_minutes": 0, "visible": "busy", "lang": None, "notify": {}, "token": None}
+                            "remind_minutes": 0, "buddy_minutes": 10, "visible": "busy", "lang": None, "notify": {}, "token": None}
 
 
 def others() -> list[dict]:
@@ -90,6 +90,8 @@ def update(pid: int, data: dict) -> None:
         raise ValueError("bad value")
     if "remind_minutes" in patch:
         patch["remind_minutes"] = max(0, min(720, int(patch["remind_minutes"] or 0)))
+    if "buddy_minutes" in patch:
+        patch["buddy_minutes"] = max(0, min(180, int(patch["buddy_minutes"] or 0)))
     if "notify" in data:                        # 只改有送來的欄位；空字串 = 清掉
         cur = (get(pid) or {}).get("notify", {})
         for k, v in data["notify"].items():

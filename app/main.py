@@ -17,7 +17,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import closures, core, db, demo, i18n, insights, notify, profiles, quick, social, sources
+from . import closures, commute, core, db, demo, i18n, insights, notify, profiles, quick, social, sources, wake
 from .i18n import tr
 
 ROOT = Path(__file__).resolve().parent
@@ -37,6 +37,7 @@ if DEMO:
     for _old in db.DB_PATH.parent.glob("demo*.db*"):
         _old.unlink(missing_ok=True)
     shutil.rmtree(db.DB_PATH.parent / "demo-avatars", ignore_errors=True)
+    commute.OFFLINE = True
 
 
 def today() -> str:
@@ -114,8 +115,14 @@ def job_minute() -> None:
             for i, a in enumerate(on):
                 if a["time"] == hm_now:
                     nxt = next((e for e in core.events_on(today()) if e["wake"] and e["time"] > hm_now), None)
+                    if wake.awake_at(today()):
+                        break                   # 已經在網頁上按過「我醒了」
+                    link = server_urls()[:1]
                     notify.send(tr("⏰ 起床！（第 {i}／{n} 個）", i=i + 1, n=len(on))
-                                + (tr("\n{time} {title}", time=nxt["time"], title=nxt["title"]) if nxt else ""))
+                                + (tr("\n{time} {title}", time=nxt["time"], title=nxt["title"]) if nxt else "")
+                                + (tr("\n醒了就點：{url}", url=link[0] + "/?awake=1") if link else ""), urgent=i == len(on) - 1)
+        if hm_now == "05:00" and commute.settings()["on"]:
+            commute_refresh()
         if p["remind_minutes"]:
             later = now + timedelta(minutes=p["remind_minutes"])
             if later.date() == now.date():
@@ -124,6 +131,23 @@ def job_minute() -> None:
                         loc = f"（{e['location']}）" if e.get("location") else ""
                         notify.send(tr("🔔 {n} 分鐘後：{time} {title}", n=p["remind_minutes"], time=e["time"],
                                        title=e["title"]) + loc)
+
+
+def job_wake() -> None:
+    urls = server_urls()
+    wake.job(urls[0] + "/?view=day" if urls else "")
+
+
+def commute_refresh() -> None:
+    """清晨用最新的降雨預報重排今天的鬧鐘；變早了就推播說一聲。"""
+    d, now = today(), datetime.now().strftime("%H:%M")
+    before = [a["time"] for a in core.plan(d) if a["enabled"] and a["source"] == "auto"]
+    if not before or before[0] <= now:
+        return
+    after = [a["time"] for a in core.regenerate_plan(d)["alarms"] if a["enabled"]]
+    if after and after[0] < before[0]:
+        notify.send(tr("🌧 {why}\n⏰ 鬧鐘提早到 {t}（原本 {b}）", why=db.kv_get("plan_reason:" + d) or "",
+                       t=after[0], b=before[0]))
 
 
 def inbox_add(data: dict, silent: bool = False) -> int | None:
@@ -226,6 +250,7 @@ async def lifespan(_: FastAPI):
     sched.add_job(job_evening, "cron", hour=eh, minute=em)
     sched.add_job(job_morning, "cron", hour=mh, minute=mm)
     sched.add_job(job_minute, "cron", second=0)
+    sched.add_job(job_wake, "cron", second=20)
     if closures.configured():
         # 停班停課：前一晚 19–22 點陸續公告，也可能凌晨才宣布，所以晚上和清晨各查幾次
         sched.add_job(closures.job, "cron", hour="19-23", minute="5,35", args=[1])
@@ -638,7 +663,80 @@ def phone_log(body: dict = Body(...)):
     if body.get("ts"):
         data["ts"] = body["ts"]
     db.insert("alarm_log", data)
+    if body["action"] == "awake":
+        wake.on_awake()
     return {"ok": True}
+
+
+@app.get("/api/phone/nudge")
+def phone_nudge():
+    """手機 App 在起床時段每分鐘問一次：有沒有人在叫我、我是不是已經醒了。"""
+    n = wake.take_nudge()
+    return {"nudge": {"from": n["name"]} if n else None, "awake": bool(wake.awake_at(today()))}
+
+
+# ---------- 互相叫起床 ----------
+@app.get("/api/wake")
+def wake_status():
+    return {"me": wake.status(), "others": wake.others_status()}
+
+
+@app.post("/api/wake/awake")
+def wake_awake():
+    return {"at": wake.mark_awake()}
+
+
+@app.post("/api/wake/nudge/{pid}")
+def wake_nudge(pid: int):
+    r = wake.nudge(pid)
+    if not r["ok"]:
+        raise HTTPException(409, r["reason"])
+    return r
+
+
+# ---------- 通勤 ----------
+@app.get("/api/commute")
+def get_commute():
+    return {"settings": commute.settings(), "places": commute.places()}
+
+
+@app.patch("/api/commute")
+def edit_commute(body: dict = Body(...)):
+    try:
+        s = commute.save(body)
+    except (TypeError, ValueError):
+        raise HTTPException(400, tr("設定值不正確")) from None
+    refresh_tomorrow()
+    return {"settings": s}
+
+
+@app.post("/api/commute/places")
+def add_place(body: dict = Body(...)):
+    try:
+        commute.set_place(str(body.get("name", "")), int(body.get("minutes", 0)))
+    except (TypeError, ValueError):
+        raise HTTPException(400, tr("設定值不正確")) from None
+    refresh_tomorrow()
+    return {"ok": True}
+
+
+@app.delete("/api/commute/places/{name}")
+def del_place(name: str):
+    commute.del_place(name)
+    refresh_tomorrow()
+    return {"ok": True}
+
+
+@app.post("/api/commute/estimate")
+def estimate_place(body: dict = Body(...)):
+    loc = str(body.get("location", "")).strip()
+    if not commute.settings()["home"]:
+        raise HTTPException(400, tr("先填家的地址"))
+    m = commute.estimate(loc) if loc else None
+    if m is None:
+        raise HTTPException(404, tr("估不出來：地圖上找不到這個地點，請自己填分鐘數"))
+    refresh_tomorrow()
+    return {"minutes": m}
 
 
 # ---------- 快速輸入 ----------
@@ -734,6 +832,7 @@ def profile_view(p: dict, full: bool) -> dict:
             chans = [c | {"label": tr(c["label"])} for c in notify.channels()]
             last = db.kv_get("phone_last_sync")
         out |= {"alarm_mode": p["alarm_mode"], "remind_minutes": p["remind_minutes"], "visible": p["visible"],
+                "buddy_minutes": p.get("buddy_minutes", 10),
                 "token": profiles.token_of(p), "channels": chans, "phone_last_sync": last}
     return out
 

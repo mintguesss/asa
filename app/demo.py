@@ -3,9 +3,9 @@
 每次啟動都重建（日期永遠相對於今天），不會碰到真正的 data/asa.db；
 示範模式下也不會跑排程推播和資料來源同步。
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
-from . import core, db, i18n, profiles
+from . import commute, core, db, i18n, profiles
 
 
 def seed() -> None:
@@ -115,5 +115,19 @@ def seed() -> None:
             db.run("INSERT INTO activity (actor, action, title, owner, ref_id, body, created) VALUES (?,?,?,?,?,?,datetime('now','localtime',?))",
                    (actor, action, title, owner, ref, body, ago))
 
+    # 通勤：常用地點的交通時間，鬧鐘會再往前扣（示範模式不連外部服務，所以不估路線也不查天氣）
+    commute.save({"on": True, "home": L("桃園市中壢區中大路 300 號", "300 Zhongda Rd, Taoyuan"), "default": 10, "rain": 10})
+    for name, m in [(L("理學院", "Science"), 12), (L("工程五館", "Eng. Bldg 5"), 15), (L("資電館", "CS Hall"), 15),
+                    (L("活動中心", "Student Center"), 10)]:
+        commute.set_place(name, m)
     for n in range(0, 14):
         core.regenerate_plan(day(n))
+    # 互相叫起床：小美用推播叫起床，今天最後一個鬧鐘已經過了還沒按「我醒了」
+    profiles.update(other["id"], {"alarm_mode": "notify"})
+    now = datetime.now()
+    if now.hour * 60 + now.minute >= 45:
+        with db.as_profile(other["id"]):
+            for back in (40, 30, 20):
+                t = now - timedelta(minutes=back)
+                db.run("INSERT OR IGNORE INTO alarm_plan (date, time, label, source) VALUES (?,?,?,'manual')",
+                       (day(0), t.strftime("%H:%M"), "起床"))

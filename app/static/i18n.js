@@ -94,6 +94,19 @@ const EN = {
   '通知': 'Notifications', '測試': 'Test', '已設定': 'Configured', '未設定': 'Not set', '早上簡報': 'Morning brief', '晚上預告': 'Evening preview',
   '今晚會推播的內容': 'Tonight\'s message', '現在推播': 'Send now', '設定都在 .env，改完重新啟動才會生效。': 'Everything lives in .env — restart after changing it.',
   '還沒有設定任何通知管道': 'No notification channel configured',
+  '叫他起床': 'Wake them', '{0} 起床': 'Up at {0}', '還沒起床': 'Still asleep', '鬧鐘在響': 'Alarm ringing',
+  '已叫 {0}：手機會大聲響': 'Waking {0}: their phone will ring loudly', '已推播叫 {0}': 'Sent {0} a wake-up push',
+  '早安！{0} 起床': 'Good morning! Up at {0}', '還沒起床嗎？': 'Still in bed?', '早安，起床了嗎？': 'Good morning — are you up?',
+  '{0} 在叫你': '{0} is trying to wake you', '按下去就不會再叫你': 'Tap it and the alarms stop', '，也會讓對方知道': ', and they\'ll know you\'re up',
+  '我醒了': 'I\'m up', '起床了': 'got up', '叫「{0}」起床': 'tried to wake {0}', '叫不醒時': 'If I oversleep',
+  '分鐘後通知其他人來叫（0 = 不通知）': 'min after the last alarm, ask the others to wake me (0 = off)',
+  '通勤': 'Commute', '估算中…': 'Estimating…', '估計 {0} 分鐘': 'About {0} min',
+  '開啟後，鬧鐘會再往前扣掉從家裡到行程地點的交通時間，預報會下雨就多留幾分鐘。規則裡的「提前」就只算準備時間（梳洗、吃早餐）。': 'When on, alarms also subtract the travel time from home to the event, plus extra when rain is forecast. The rule\'s "lead" then only covers getting ready.',
+  '家的地址': 'Home address', '例：桃園市中壢區中大路 300 號': 'e.g. 300 Zhongda Rd, Zhongli, Taoyuan', '交通方式': 'Travel by',
+  '機車／開車': 'Scooter / car', '腳踏車': 'Bike', '走路': 'Walk', '其他地點': 'Other places', '分鐘（沒對上常用地點、也估不出來時）': 'min (when a place is unknown and can\'t be estimated)',
+  '下雨多留': 'Extra if rainy', '分鐘（降雨機率 50% 以上）': 'min (50%+ chance of rain)', '常用地點': 'Places', '自動估': 'estimated', '分': 'min',
+  '還沒有常用地點': 'No places yet', '明天的地點還沒設：': 'Tomorrow\'s places not set yet:', '地點（例：理學院）': 'Place (e.g. Science Bldg)', '分鐘': 'Minutes',
+  '分鐘留空會用 OpenStreetMap 自動估（不含即時路況和大眾運輸；搭捷運、公車請自己填）。地址和地點只會送去 OpenStreetMap 和 Open-Meteo 查詢。': 'Leave minutes empty to estimate with OpenStreetMap (no live traffic or public transit — enter those yourself). Your address and places are only sent to OpenStreetMap and Open-Meteo.',
 };
 
 const t = (zh, ...a) => (LANG === 'en' && EN[zh] != null ? EN[zh] : zh).replace(/\{(\d)\}/g, (_, i) => a[i]);
