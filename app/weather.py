@@ -45,7 +45,9 @@ def reverse(lat: float, lon: float) -> str:
     except Exception:  # noqa: BLE001
         return ""
     city = a.get("city") or a.get("county") or a.get("state") or ""
-    area = a.get("suburb") or a.get("city_district") or a.get("town") or a.get("village") or ""
+    # 台灣的「區／鎮／鄉」在不同地方會放在不同欄位；找不到才退回里、村
+    keys = ("city_district", "district", "suburb", "town", "borough", "municipality")
+    area = next((a[k] for k in keys if str(a.get(k, "")).endswith(("區", "鎮", "鄉", "市"))), "")         or next((a[k] for k in keys if a.get(k)), "") or a.get("village") or ""
     return (city + area) if city != area else city
 
 
@@ -55,10 +57,10 @@ def set_geo(lat: float, lon: float) -> dict:
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         raise ValueError("geo")
     old = place()
-    if old.get("auto") and old.get("geo") and abs(old["geo"][0] - lat) < 0.02 and abs(old["geo"][1] - lon) < 0.02 and old.get("name"):
+    if old.get("v") == 2 and old.get("geo") and abs(old["geo"][0] - lat) < 0.02 and abs(old["geo"][1] - lon) < 0.02 and old.get("name"):
         p = old | {"ts": time.time()}
     else:
-        p = {"name": ("" if OFFLINE else reverse(lat, lon)) or tr("目前位置"), "geo": [lat, lon], "ts": time.time(), "auto": 1}
+        p = {"name": ("" if OFFLINE else reverse(lat, lon)) or tr("目前位置"), "geo": [lat, lon], "ts": time.time(), "auto": 1, "v": 2}
         db.run("DELETE FROM kv WHERE key LIKE 'wx:%'")
     db.kv_set("place", json.dumps(p, ensure_ascii=False))
     return p
@@ -128,3 +130,30 @@ def line(d: str, today: bool) -> str | None:
         if w["rain"] >= 50:
             s += tr("，記得帶傘 ☂️")
     return s
+
+
+def hourly() -> list[dict]:
+    """接下來 24 小時每小時的天氣（首頁用）：[{time, icon, text, temp, rain}]。半小時內用快取。"""
+    p = place()
+    if not p.get("geo") or OFFLINE:
+        return []
+    raw = db.kv_get("wxh")
+    if raw:
+        v = json.loads(raw)
+        if time.time() - v["ts"] < 1800 and v.get("geo") == p["geo"]:
+            return v["data"]
+    lat, lon = p["geo"]
+    try:
+        r = httpx.get("https://api.open-meteo.com/v1/forecast", headers=UA, timeout=8, params={
+            "latitude": lat, "longitude": lon, "timezone": "auto", "forecast_hours": 24,
+            "hourly": "temperature_2m,weather_code,precipitation_probability"})
+        h = (r.json() if r.status_code == 200 else {})["hourly"]
+        data = []
+        for t_, temp, code, rain in zip(h["time"], h["temperature_2m"], h["weather_code"], h["precipitation_probability"]):
+            icon, text = _desc(int(code or 0))
+            data.append({"time": t_[11:16], "date": t_[:10], "icon": icon, "text": text,
+                         "temp": round(temp) if temp is not None else None, "rain": rain})
+    except Exception:  # noqa: BLE001
+        return []
+    db.kv_set("wxh", json.dumps({"ts": time.time(), "geo": p["geo"], "data": data}))
+    return data

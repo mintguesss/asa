@@ -337,6 +337,7 @@ void main() {
     document.addEventListener('visibilitychange', () => { last = 0; wake(); });
     resize();
 
-    return { set(next) { if (next.stops) setTarget(next.stops); Object.assign(s, next); wake(); } };
+    // still（手機）：換色直接跳到新顏色畫一格，不跑好幾秒的漸變（漸變時上面的毛玻璃每格都要重算，會一直閃）
+    return { set(next) { if (next.stops) { setTarget(next.stops); if (s.still) current = target.map(x => x.slice()); } Object.assign(s, next); wake(); } };
   };
 })();

@@ -971,3 +971,13 @@ input.tp{cursor:pointer;caret-color:transparent}
   .card,.runway,.dock,.cmd input,.tbtn,.hb,.seg,.arow,.asum{backdrop-filter:blur(10px)!important;-webkit-backdrop-filter:blur(10px)!important}
 }
 .kv .btn.sm{padding:4px 10px;font-size:12.5px;margin-left:6px}
+
+/* 輸入框左邊的星星：垂直置中 */
+.cmd .spark{top:0;bottom:0;display:flex;align-items:center;line-height:1}
+/* 首頁每小時天氣 */
+.wx h3 .muted{font-weight:400;font-size:12.5px}
+.wxnow{display:flex;align-items:center;gap:10px;margin:2px 0 10px}.wxnow b{font-size:30px;font-weight:650}.wxnow .wxi{font-size:28px}
+.wxh{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;-webkit-overflow-scrolling:touch}.wxh::-webkit-scrollbar{display:none}
+.wxc{flex:none;width:52px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;border-radius:14px;background:rgba(var(--w),.06);font-size:12px}
+.wxc .wxi{font-size:20px}.wxc b{font-size:14px}.wxc .rain{color:var(--a1t,var(--a1));font-size:11px;min-height:13px}
+.wxc.tm{opacity:.75}

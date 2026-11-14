@@ -753,6 +753,12 @@ def get_place():
             "weather": weather.forecast(today()) if p else None}
 
 
+@app.get("/api/weather/hourly")
+def weather_hourly():
+    p = weather.place()
+    return {"place": p.get("name", ""), "hours": weather.hourly()}
+
+
 @app.patch("/api/place")
 def edit_place(body: dict = Body(...)):
     try:

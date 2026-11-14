@@ -279,7 +279,12 @@ const PAGE = {tasks: 'lilac', inbox: 'mint', alarms: 'sunrise', weekly: 'rose', 
 const DAYPAL = ['day', 'lilac', 'mint', 'sunrise', 'rose', 'dusk', 'gold'];      // 日檢視：週一到週日各一個顏色（今天則跟著時段）
 const palPref = () => { const v = store.get('pal'); return v === 'random' || PAL[v] ? v : 'auto'; };
 const randomPal = () => { const ks = Object.keys(PAL).filter(k => k !== S.rnd); return ks[Math.floor(Math.random() * ks.length)]; };
-function setPalPref(v) { store.set('pal', v); S.rnd = v === 'random' ? randomPal() : null; render(); }
+function setPalPref(v) {
+  store.set('pal', v); S.rnd = v === 'random' ? randomPal() : null;
+  setPal();                                          // 只換顏色和按鈕狀態，不重畫整頁（重畫會閃）
+  document.querySelectorAll('.pals .on').forEach(b => b.classList.remove('on'));
+  document.querySelector(`.pals [onclick="setPalPref('${v}')"]`)?.classList.add('on');
+}
 function palNow() {
   const pref = palPref();
   if (pref === 'random') return S.rnd || (S.rnd = randomPal());
@@ -417,7 +422,7 @@ function othersCard(s) {
 }
 const VIEW = {};
 VIEW.day = async () => {
-  const [s, pr] = await Promise.all([api('/day?d=' + S.date), api('/pressure')]);
+  const [s, pr, wx] = await Promise.all([api('/day?d=' + S.date), api('/pressure'), S.date === TODAY() ? api('/weather/hourly').catch(() => null) : null]);
   const isToday = S.date === TODAY(), mob = MOB(), dt = dateText(S.date);
   const maxLoad = Math.max(3, ...pr.map(p => p.events + p.tasks + p.due.length * 2)), x = s.tasks;
   const evForm = `<form class="addrow" onsubmit="event.preventDefault();const f=formData(this);act('/events','POST',{title:f.title,start:S.date+'T'+f.time,end:f.end?S.date+'T'+f.end:null,location:f.location||'',shared:f.shared?1:0})">
@@ -432,9 +437,10 @@ VIEW.day = async () => {
       <div class="card"><h3>${mob ? t('行程') : t('時間軸')}</h3>${mob ? agenda(s.events, {del: true, now: isToday ? nowMin() : null})
         : timeline(s.events, {...rangeOf([s]), alarms: s.alarms, now: isToday ? nowMin() : null})}
         ${mob ? `<details class="adder"><summary>＋ ${t('新增行程')}</summary>${evForm}</details>` : evForm}</div>
+      ${wxCard(wx)}
     </div><div class="stack">
       ${othersCard(s)}
-      <div class="card"><h3 title="${t('越高代表那天越滿；紅色數字是截止的數量')}">${t('未來 14 天')}</h3>
+      <div class="card"><h3 title="${t('越高代表那天越滿；紅色數字是截止的數量')}">${t('未來 14 天行程')}</h3>
         <div class="press">${pr.map((p, i) => { const load = p.events + p.tasks + p.due.length * 2, lv = p.due.length >= 2 ? 3 : p.due.length ? 2 : load >= 4 ? 1 : 0;
           return `<button class="d ${p.date === TODAY() ? 'today' : ''}" onclick="go('day','${p.date}')" title="${p.date}${p.due.length ? ' · ' + esc(p.due.join(', ')) : ''}">
             <div class="bar h${lv}" style="--i:${i};height:${Math.round(load / maxLoad * 100)}%">${p.due.length ? `<em>${p.due.length}</em>` : ''}</div>${WD1[p.weekday]}<span class="num">${+p.date.slice(8)}</span></button>`; }).join('')}</div></div>
@@ -1158,4 +1164,15 @@ function placeCard(pl) {
         <button class="btn ghost sm" onclick="locate(true).then(ok=>{if(ok){toast(t('已更新位置'));render()}})">${t('重新定位')}</button></dd>
       ${w ? `<dt>${t('今天')}</dt><dd>${w.icon} ${esc(w.text)} ${w.lo}～${w.hi}°C${w.rain != null ? ' · ☔ ' + w.rain + '%' : ''}</dd>` : ''}</dl>
     <div class="addrow"><button class="btn" onclick="showBrief('morning')">☀️ ${t('看早安簡報')}</button><button class="btn ghost" onclick="showBrief('evening')">🌙 ${t('看明日預告')}</button></div></div>`;
+}
+
+
+/* 首頁：今天每小時的天氣（行程下面） */
+function wxCard(wx) {
+  if (!wx || !wx.hours.length) return '';
+  const hs = wx.hours, now = hs[0];
+  return `<div class="card wx"><h3>${t('今天天氣')}${wx.place ? ` <span class="muted">· ${esc(wx.place)}</span>` : ''}</h3>
+    <div class="wxnow"><span class="wxi">${now.icon}</span><b class="num">${now.temp}°</b><span>${esc(now.text)}${now.rain != null ? ` · ☔ ${now.rain}%` : ''}</span></div>
+    <div class="wxh">${hs.map((h, i) => `<div class="wxc ${h.date !== TODAY() ? 'tm' : ''}"><span class="muted num">${i ? (h.time === '00:00' ? t('明天') : +h.time.slice(0, 2) + t('時')) : t('現在')}</span>
+      <span class="wxi">${h.icon}</span><b class="num">${h.temp}°</b><span class="rain num">${h.rain >= 20 ? h.rain + '%' : ''}</span></div>`).join('')}</div></div>`;
 }

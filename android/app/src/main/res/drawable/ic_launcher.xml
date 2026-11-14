@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#E8602A" android:pathData="M0,0h108v108h-108z" />
-    <path android:fillColor="#FFD27A" android:pathData="M54,54m-22,0a22,22 0,1 1,44 0a22,22 0,1 1,-44 0" />
-    <path android:fillColor="#1D1C47" android:pathData="M0,62h108v46h-108z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M30,74h48v4h-48z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M40,84h28v4h-28z" />
-</vector>
+<!-- App 圖示：跟網頁版（app/static/icons/maskable-512.png）同一張 -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/icon_bg" />
+    <foreground>
+        <inset android:drawable="@drawable/ic_launcher_fg" android:inset="4%" />
+    </foreground>
+</adaptive-icon>

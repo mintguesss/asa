@@ -50,7 +50,7 @@ const EN = {
   '分': 'min', '個': '', '那天沒有行程時從幾點開始響；留空就不排鬧鐘': 'Start time on days with nothing scheduled; empty = no alarms',
   '從第一個到最後一個共 {0} 分鐘': '{0} min from first to last', '套用': 'Apply', '已套用': 'Applied', '新增規則': 'New rule', '新規則': 'New rule',
   '起床紀錄': 'Wake-up log',
-  '已過': 'Past', '位置': 'Location', '還沒抓到位置': 'No location yet', '重新定位': 'Locate again', '已更新位置': 'Location updated',
+  '已過': 'Past', '今天天氣': 'Weather today', '時': ':00', '現在': 'Now', '未來 14 天行程': 'Next 14 days', '位置': 'Location', '還沒抓到位置': 'No location yet', '重新定位': 'Locate again', '已更新位置': 'Location updated',
   '{0} 分鐘前': '{0} min ago', '{0} 小時前': '{0} h ago', '沒有位置權限：請在手機設定允許 Asa 使用位置': 'No location permission: allow Asa to use your location in Settings',
   '抓不到目前位置，等一下再試': 'Couldn\'t get your location, try again later', '請更新 Asa App 才能朗讀': 'Update the Asa app to use read-aloud',
   '請說…': 'Listening…', '沒聽到聲音，再按一次說說看': 'Didn\'t hear anything, tap and try again',
