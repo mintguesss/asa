@@ -989,3 +989,27 @@ input.tp{cursor:pointer;caret-color:transparent}
 /* 色系圓點：自己一層，換色時不跟著整張卡片重畫 */
 .pals{transform:translateZ(0)}
 .pal{transition:box-shadow .2s ease,transform .2s ease}
+
+/* ---------- 展開／收起：用 grid 列高 0fr → 1fr 做順順的高度動畫 ---------- */
+.clip{display:grid;grid-template-rows:0fr;transition:grid-template-rows .3s cubic-bezier(.2,.8,.2,1),opacity .25s ease;opacity:0}
+.clip>div{overflow:hidden;min-height:0}
+.afold .alist,.afold.open .alist{display:flex;margin-top:0;padding-top:8px}
+.afold.open .clip,.runway.open .rwclip,.rule.open .dclip{grid-template-rows:1fr;opacity:1}
+.runway .rwall,.runway.open .rwall{display:flex;margin:0;padding:4px 0 12px}
+.rule .dtimes,.rule.open .dtimes{display:flex;margin-top:0;padding-top:10px}
+.asum .tg,.asum .tg2{transition:opacity .2s}
+.rule .dots span{transition:color .2s}
+/* 開關、鬧鐘點點：切換時滑動／淡入淡出 */
+.arow,.arow b{transition:opacity .25s ease}
+.bell{transition:opacity .25s ease,transform .25s ease}
+/* App 開啟動畫還沒收起：首頁進場動畫先停在第一格，收起時再一起播 */
+body.hold #view,body.hold #view *{animation-play-state:paused!important}
+/* 時間選擇器的快捷鍵 */
+.pk-q{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px}
+.pq{border:0;border-radius:12px;padding:9px 0;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;
+  background:color-mix(in srgb,var(--a1) 14%,transparent);color:color-mix(in srgb,var(--a1) 70%,var(--ink));transition:background .2s,transform .12s}
+.pq:active{transform:scale(.95);background:color-mix(in srgb,var(--a1) 24%,transparent)}
+.pq[data-q]{background:color-mix(in srgb,var(--a1) 26%,transparent)}
+
+.wx.loading{min-height:150px}.wx.loading .muted{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.4}}

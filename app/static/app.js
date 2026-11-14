@@ -15,7 +15,7 @@ const mqMobile = matchMedia('(max-width:820px)'), MOB = () => mqMobile.matches;
 const isDeadline = e => e.title.startsWith('⏰');
 const flagText = e => e.title.replace('⏰ 截止：', t('截止') + ' ');
 
-const S = {view: 'day', cal: 'day', date: TODAY(), inbox: 0};
+const S = {view: 'day', cal: 'day', date: TODAY(), inbox: 0, enter: true, ruleOpen: new Set()};
 const TOUCH_ = matchMedia('(hover:none),(pointer:coarse)').matches;
 S.view = S.cal = QS.get('view') && ['day', 'week', 'month'].includes(QS.get('view')) ? QS.get('view') : 'day';   // 每次打開都從「日」開始
 if (['day', 'week', 'month'].includes(QS.get('view'))) S.view = S.cal = QS.get('view');
@@ -23,6 +23,7 @@ else if (['tasks', 'inbox', 'alarms', 'weekly', 'link', 'activity'].includes(QS.
 if (/^\d{4}-\d{2}-\d{2}$/.test(QS.get('date') || '')) S.date = QS.get('date');
 
 const NATIVE = !!window.AsaNative;
+if (NATIVE && window.AsaNative.ready) document.body.classList.add('hold');   // 開啟動畫還在：首頁進場動畫先暫停
 let syncT = 0;
 function nativeSync() { if (NATIVE) { clearTimeout(syncT); syncT = setTimeout(() => { try { AsaNative.sync(); } catch { /* 舊版 App */ } }, 400); } }
 window.onNativeSync = () => { if (S.view === 'alarms' || S.view === 'link') render(); };   // App 同步完會呼叫
@@ -82,10 +83,15 @@ async function confirmDelete(path, row) {
   if (row) { row.style.height = row.offsetHeight + 'px'; row.classList.add('gone'); await new Promise(r => setTimeout(r, 260)); }
   return true;
 }
-const rowOf = () => { const el = window.event && window.event.target; return el && el.closest && el.closest('.task,.ev,.ag,.wrow,.rule,.mem'); };
+const rowOf = () => { const el = window.event && window.event.target; return el && el.closest && el.closest('.task,.ev,.ag,.wrow,.rule,.mem,.arow'); };
 const act = async (path, method, body, msg) => {
   if (method === 'DELETE' && !await confirmDelete(path, rowOf())) return;
-  await api(path, method, body); if (msg) toast(msg); render();
+  const tg = method === 'PATCH' && window.event?.target?.closest?.('.sw,.rwall .chip,.bell'), t0 = performance.now();
+  if (tg) optimistic(tg);
+  try { await api(path, method, body); } catch (e) { if (tg) optimistic(tg); throw e; }
+  if (msg) toast(msg);
+  if (tg) { S.full = false; await new Promise(r => setTimeout(r, Math.max(0, 340 - (performance.now() - t0)))); }
+  render();
 };
 
 /* ---------- 成員：只有一個人用的時候 P.multi 是 false，下面這些都不會出現 ---------- */
@@ -196,28 +202,32 @@ async function render(quiet) {
   S.lastView = S.view; S.lastHtml = html; S.full = false;
   $('#view').innerHTML = html;
   const tpl = document.createElement('template'); tpl.innerHTML = html;
-  const src = [...tpl.content.querySelectorAll('.card')].map(c => c.outerHTML);
-  $('#view').querySelectorAll('.card').forEach((c, i) => { c._src = src[i]; });
+  const src = [...tpl.content.querySelectorAll('.card,.hero')].map(c => c.outerHTML);
+  $('#view').querySelectorAll('.card,.hero').forEach((c, i) => { c._src = src[i]; });
   S.skel = skeleton(tpl.content);
   decorate();
   fitHome();
   window.scrollTo(0, y);
+  if (!S.booted) {                                  // 第一次畫好
+    S.booted = true;
+    if (document.body.classList.contains('hold')) { try { AsaNative.ready(); } catch { window.splashGone(); } setTimeout(window.splashGone, 3000); }
+  }
 }
 /* 同一頁資料有變（例如手機剛同步、時間過了一分鐘）：只換掉有變的那幾張卡片，不整頁重畫（整頁重畫會閃） */
 function skeleton(frag) {
   const d = document.createElement('div'); d.append(frag.cloneNode(true));
-  d.querySelectorAll('.card').forEach(c => c.replaceWith(document.createComment('card')));
+  d.querySelectorAll('.card,.hero').forEach(c => c.replaceWith(document.createComment('card')));
   return d.innerHTML;
 }
 function morph(html) {
   const v = $('#view'), tpl = document.createElement('template'); tpl.innerHTML = html;
-  const nc = [...tpl.content.querySelectorAll('.card')], oc = [...v.querySelectorAll('.card')];
+  const nc = [...tpl.content.querySelectorAll('.card,.hero')], oc = [...v.querySelectorAll('.card,.hero')];
   if (nc.length !== oc.length || oc.some(c => !c._src) || skeleton(tpl.content) !== S.skel) return false;
   nc.forEach((n, i) => {
     const src = n.outerHTML;
     if (src === oc[i]._src) return;
     oc[i].replaceWith(n); n._src = src;
-    n.classList.add('border-glow-card'); n.style.setProperty('--i', i + 2); n.insertAdjacentHTML('beforeend', '<span class="edge-light"></span>');
+    if (n.classList.contains('card')) { n.classList.add('border-glow-card'); n.style.setProperty('--i', i + 2); n.insertAdjacentHTML('beforeend', '<span class="edge-light"></span>'); }
     n.querySelectorAll('.seg').forEach(segSync);
   });
   return true;
@@ -398,7 +408,7 @@ function runway(s) {
   return `<div class="runway ${S.rwOpen ? 'open' : ''}"><div class="cap"><b class="num">${on.length ? on[0].time : '—'}</b>
       <button class="rwx num" onclick="S.rwOpen=!S.rwOpen;this.closest('.runway').classList.toggle('open',S.rwOpen)" aria-label="${t('展開每一個鬧鐘')}">×${on.length}${on.length > 1 ? `　→ ${on[on.length - 1].time}` : ''} <span class="chev">⌄</span></button>
       <span style="flex:1"></span>${addBtn}</div>
-    <div class="rwall">${al.map(x => `<button class="chip num ${x.enabled ? 'on' : 'off'}" title="${t('點一下開關')}" onclick="act('/alarms/plan/${x.id}','PATCH',{enabled:${x.enabled ? 0 : 1}})">${x.time}</button>`).join('')}</div>
+    <div class="clip rwclip"><div><div class="rwall">${al.map(x => `<button class="chip num ${x.enabled ? 'on' : 'off'}" title="${t('點一下開關')}" onclick="act('/alarms/plan/${x.id}','PATCH',{enabled:${x.enabled ? 0 : 1}})">${x.time}</button>`).join('')}</div></div></div>
     <div class="track">${al.map((x, i) => `<button class="bell ${x.enabled ? '' : 'off'} ${x.source === 'manual' ? 'manual' : ''} ${i === 0 || i === al.length - 1 ? 'edge' : ''}" style="left:${pos(x.time)}%;--i:${i}"
         title="${x.time}（${t('點一下開關')}）" onclick="act('/alarms/plan/${x.id}','PATCH',{enabled:${x.enabled ? 0 : 1}})"><i class="num">${x.time}</i></button>`).join('')}
       ${anchor ? `<div class="goal"><span class="num">${esc(anchor.time)} ${esc(anchor.title)}</span></div>` : ''}</div></div>`;
@@ -449,7 +459,8 @@ function othersCard(s) {
 }
 const VIEW = {};
 VIEW.day = async () => {
-  const [s, pr, wx] = await Promise.all([api('/day?d=' + S.date), api('/pressure'), S.date === TODAY() ? api('/weather/hourly').catch(() => null) : null]);
+  const [s, pr] = await Promise.all([api('/day?d=' + S.date), api('/pressure')]);
+  const wx = S.date === TODAY() ? weatherNow() : null;      // 天氣不等：先畫畫面，天氣在背景抓好再補上
   const isToday = S.date === TODAY(), mob = MOB(), dt = dateText(S.date);
   const maxLoad = Math.max(3, ...pr.map(p => p.events + p.tasks + p.due.length * 2)), x = s.tasks;
   const evForm = `<form class="addrow" onsubmit="event.preventDefault();const f=formData(this);act('/events','POST',{title:f.title,start:S.date+'T'+f.time,end:f.end?S.date+'T'+f.end:null,location:f.location||'',shared:f.shared?1:0})">
@@ -738,17 +749,17 @@ function ruleCard(r) {
   const num = (label, field, v, unit, min = 1, max = 600) => `<label class="knob"><span>${t(label)}</span><input class="num" type="number" min="${min}" max="${max}" value="${v}" ${P(field, '+this.value')}><em>${t(unit)}</em></label>`;
   const time = (label, field, v, tip = '') => `<label class="knob" title="${tip}"><span>${t(label)}</span><input type="time" value="${esc(v || '')}" ${P(field, 'this.value||null')}></label>`;
   const follow = r.anchor === 'first_event', n = Math.min(r.count, 30), gap = Math.max(4, Math.min(22, r.interval_minutes * 2)), span = (r.count - 1) * r.interval_minutes;
-  return `<div class="rule ${r.enabled ? '' : 'off'}"><div class="hd"><input value="${esc(r.name)}" ${P('name')} aria-label="${t('規則名稱')}"><span class="sp"></span>
+  return `<div class="rule ${r.enabled ? '' : 'off'} ${S.ruleOpen.has(r.id) ? 'open' : ''}"><div class="hd"><input value="${esc(r.name)}" ${P('name')} aria-label="${t('規則名稱')}"><span class="sp"></span>
       <button class="x" title="${t('刪除')}" onclick="act('/alarms/rules/${r.id}','DELETE')">✕</button>
       <button class="sw ${r.enabled ? 'on' : ''}" title="${r.enabled ? t('啟用中') : t('已停用')}" onclick="act('/alarms/rules/${r.id}','PATCH',{enabled:${r.enabled ? 0 : 1}})"><i></i></button></div>
     <div class="wds">${WD1.map((c, i) => `<button class="wd ${wds.includes(String(i)) ? 'on' : ''}" title="${WDN[i]}" onclick="act('/alarms/rules/${r.id}','PATCH',{weekdays:'${tog(i)}'})">${c}</button>`).join('')}</div>
     <div class="seg sm"><button class="${follow ? 'on' : ''}" onclick="act('/alarms/rules/${r.id}','PATCH',{anchor:'first_event'})">${t('跟著行程')}</button><button class="${follow ? '' : 'on'}" onclick="act('/alarms/rules/${r.id}','PATCH',{anchor:'fixed'})">${t('固定時間')}</button></div>
     <div class="knobs">${follow ? num('提前', 'lead_minutes', r.lead_minutes, '分', 0) : time('開始', 'fixed_time', r.fixed_time || '07:00')}${num('間隔', 'interval_minutes', r.interval_minutes, '分')}${num('數量', 'count', r.count, '個', 1, 30)}
       ${follow ? time('沒行程時', 'fixed_time', r.fixed_time, t('那天沒有行程時從幾點開始響；留空就不排鬧鐘')) : ''}</div>
-    <button class="dots" onclick="this.parentNode.classList.toggle('open')" title="${t('點一下看每一個的時間')}">${Array.from({length: n}, (_, i) => (i ? `<s style="width:${gap}px"></s>` : '') + `<i style="--i:${i}"></i>`).join('')}<span class="num">${t('{0} 分鐘', span)} ⌄</span></button>
-    <div class="dtimes">${Array.from({length: r.count}, (_, i) => follow ? `<span class="chip num">${t('前 {0} 分', r.lead_minutes - i * r.interval_minutes)}</span>`
+    <button class="dots" onclick="const o=this.parentNode.classList.toggle('open');o?S.ruleOpen.add(${r.id}):S.ruleOpen.delete(${r.id})" title="${t('點一下看每一個的時間')}">${Array.from({length: n}, (_, i) => (i ? `<s style="width:${gap}px"></s>` : '') + `<i style="--i:${i}"></i>`).join('')}<span class="num">${t('{0} 分鐘', span)} ⌄</span></button>
+    <div class="clip dclip"><div><div class="dtimes">${Array.from({length: r.count}, (_, i) => follow ? `<span class="chip num">${t('前 {0} 分', r.lead_minutes - i * r.interval_minutes)}</span>`
       : `<span class="chip num">${hhmm((mins(r.fixed_time || '07:00') + i * r.interval_minutes) % 1440)}</span>`).join('')}
-      ${follow ? `<div class="muted">${t('以行程開始時間往前算；例如 9:00 的課，第一個是 {0}', hhmm((540 - r.lead_minutes + 1440) % 1440))}</div>` : ''}</div></div>`;
+      ${follow ? `<div class="muted">${t('以行程開始時間往前算；例如 9:00 的課，第一個是 {0}', hhmm((540 - r.lead_minutes + 1440) % 1440))}</div>` : ''}</div></div></div></div>`;
 }
 function phoneLine(ph) {
   if (ph.mode !== 'app') return '';
@@ -768,12 +779,16 @@ function alarmList(al, d) {
   const sum = al.length ? `<button class="asum" onclick="S.alOpen=!S.alOpen;this.parentNode.classList.toggle('open',S.alOpen)">
       <b class="num">${on.length ? on[0].time : '—'}</b><span class="muted num">${t('{0} 個', on.length)}${on.length > 1 ? '　→ ' + on[on.length - 1].time : ''}${al.length > on.length ? '　' + t('（{0} 個已關閉）', al.length - on.length) : ''}</span>
       <span class="sp"></span><span class="tg">${t('展開')} ⌄</span><span class="tg2">${t('收起')} ⌃</span></button>` : '';
-  return `<div class="afold ${S.alOpen ? 'open' : ''}">${sum}<div class="alist">${rows || `<div class="muted empty">${t('這天沒有排鬧鐘')}</div>`}</div></div>
+  return `<div class="afold ${S.alOpen ? 'open' : ''}">${sum}<div class="clip"><div><div class="alist">${rows || `<div class="muted empty">${t('這天沒有排鬧鐘')}</div>`}</div></div></div></div>
     <form class="addrow aadd" onsubmit="event.preventDefault();act('/alarms/plan','POST',{date:'${d}',time:this.time.value},'${t('已加入')}')">
       <input class="field" type="time" name="time" required><button class="btn pri">＋ ${t('加鬧鐘')}</button>
       <button type="button" class="btn ghost" title="${t('照下面的規則重新排這天的鬧鐘（手動加的會留著）')}" onclick="act('/alarms/plan/regenerate?d=${d}','POST',null,'${t('已依規則重排')}')">${t('重排')}</button></form>`;
 }
-function alarmDay(v) { S.aday = v; render(); }
+function alarmDay(v) {
+  if (S.aday === v) return;
+  S.aday = v;
+  render().then(() => document.querySelector('.hero .afold')?.animate([{opacity: 0, transform: 'translateY(6px)'}, {opacity: 1, transform: 'none'}], {duration: 240, easing: 'ease-out'}));
+}
 VIEW.alarms = async () => {
   const td = TODAY(), tm = shift(td, 1);
   if (!S.aday) S.aday = new Date().getHours() < 12 ? 'td' : 'tm';
@@ -998,30 +1013,38 @@ function closeBox(d) { d.classList.add('out'); setTimeout(() => d.remove(), 180)
 const IH = 40;                                                // 滾輪每一格的高度
 function wheel(n, step, cur) {
   const items = Array.from({length: Math.ceil(n / step)}, (_, i) => i * step);
-  return `<div class="wheel" data-step="${step}"><div class="pad"></div>${items.map(v => `<div class="wi num" data-v="${v}">${String(v).padStart(2, '0')}</div>`).join('')}<div class="pad"></div></div>`;
+  return `<div class="wheel" data-step="${step}"><div class="pad"></div>${items.map(v => `<div class="wi num" data-i="${v}">${String(v).padStart(2, '0')}</div>`).join('')}<div class="pad"></div></div>`;
 }
-function wheelVal(w) { const step = +w.dataset.step; return Math.round(w.scrollTop / IH) * step; }
-function wheelSet(w, v, smooth) { w.scrollTo({top: Math.round(v / +w.dataset.step) * IH, behavior: smooth ? 'smooth' : 'auto'}); }
+function wheelVal(w) { const step = +w.dataset.step; return Math.round((w._to ?? w.scrollTop) / IH) * step; }
+function wheelSet(w, v, smooth) {
+  const top = Math.round(v / +w.dataset.step) * IH;
+  w._to = top; clearTimeout(w._tt);
+  w._tt = setTimeout(() => { if (w._to === top && Math.abs(w.scrollTop - top) > 2) w.scrollTo({top}); w._to = null; }, 700);   // 平滑捲動被打斷：直接補到位   // 滑動中先記住目標，讀值時用目標
+  w.scrollTo({top, behavior: smooth && Math.abs(top - w.scrollTop) <= 8 * IH ? 'smooth' : 'auto'});   // 距離很遠就直接跳過去
+}
 function pickTime(cur, {title = '', clear = false} = {}) {
   return new Promise(done => {
     const now = new Date(), def = cur && /^\d\d:\d\d/.test(cur) ? cur : hhmm(Math.ceil((now.getHours() * 60 + now.getMinutes()) / 5) * 5 % 1440);
     const d = sheetBox(`${title ? `<div class="pk-t">${esc(title)}</div>` : ''}
       <div class="wheels"><div class="band"></div>${wheel(24, 1)}<span class="colon">:</span>${wheel(60, 1)}</div>
-      <div class="pk-q">${['-5', '+5', '+30'].map(q => `<button type="button" class="chip" data-q="${q}">${q} ${t('分')}</button>`).join('')}</div>
+      <div class="pk-q"><button type="button" class="pq" data-m="0">${t('00 分')}</button><button type="button" class="pq" data-q="30">+30 ${t('分')}</button><button type="button" class="pq" data-m="59">${t('59 分')}</button></div>
       <div class="askrow">${clear ? `<button class="btn" data-v="clear">${t('清除')}</button>` : ''}<button class="btn" data-v="0">${t('取消')}</button><button class="btn pri" data-v="1">${t('確定')}</button></div>`);
     const [wh, wm] = d.querySelectorAll('.wheel');
     // 視窗彈出的動畫期間設定捲動位置可能被吃掉：先設一次，動畫期間再補幾次（使用者動過就不再補）
     let touched = false;
-    d.addEventListener('pointerdown', () => { touched = true; }); d.addEventListener('wheel', () => { touched = true; }, {passive: true});
+    const userMove = () => { touched = true; wh._to = wm._to = null; };
+    d.addEventListener('pointerdown', userMove); d.addEventListener('wheel', userMove, {passive: true});
     const init = () => { if (!touched) { wheelSet(wh, +def.slice(0, 2)); wheelSet(wm, +def.slice(3, 5)); } };
     void wh.offsetHeight; init(); [30, 120, 360].forEach(ms => setTimeout(init, ms));
-    d.querySelectorAll('.wi').forEach(el => el.onclick = () => wheelSet(el.parentNode, +el.dataset.v, true));
+    d.querySelectorAll('.wi').forEach(el => el.onclick = () => wheelSet(el.parentNode, +el.dataset.i, true));
     const val = () => hhmm(wheelVal(wh) * 60 + wheelVal(wm));
     const fin = v => { document.removeEventListener('keydown', key); closeBox(d); done(v); };
     const key = e => { if (e.key === 'Escape') fin(null); if (e.key === 'Enter') fin(val()); };
     document.addEventListener('keydown', key);
     d.onclick = e => {
       if (e.target === d) return fin(null);
+      const mm = e.target.closest('[data-m]');
+      if (mm) { touched = true; wheelSet(wm, +mm.dataset.m, true); return; }
       const q = e.target.closest('[data-q]');
       if (q) { const m = (mins(val()) + +q.dataset.q + 1440) % 1440; wheelSet(wh, Math.floor(m / 60), true); wheelSet(wm, m % 60, true); return; }
       const b = e.target.closest('[data-v]'); if (!b) return;
@@ -1200,13 +1223,27 @@ function placeCard(pl) {
 
 
 /* 首頁：今天每小時的天氣（行程下面） */
+function weatherNow() {
+  const c = CACHE.get('/weather/hourly');
+  if (!c || Date.now() - (S.wxAt || 0) > 10 * 60e3) loadWx();
+  return c ? structuredClone(c) : 'loading';
+}
+function loadWx() {
+  if (S.wxBusy) return;
+  S.wxBusy = true;
+  getFresh('/weather/hourly').then(r => {
+    S.wxAt = Date.now();
+    if (r.changed && S.view === 'day' && S.date === TODAY()) render(true);
+  }).catch(() => {}).finally(() => { S.wxBusy = false; });
+}
 function wxCard(wx) {
+  if (wx === 'loading') return `<div class="card wx loading"><h3>${t('今天天氣')}</h3><div class="muted">${t('天氣載入中…')}</div></div>`;
   if (!wx || !wx.hours.length) return '';
   const hs = wx.hours, now = hs[0];
   return `<div class="card wx"><h3>${t('今天天氣')}${wx.place ? ` <span class="muted">· ${esc(wx.place)}</span>` : ''}</h3>
     <div class="wxnow"><span class="wxi">${now.icon}</span><b class="num">${now.temp}°</b><span>${esc(now.text)}${now.rain != null ? ` · ☔ ${now.rain}%` : ''}</span></div>
     <div class="wxh">${hs.map((h, i) => `<div class="wxc ${h.date !== TODAY() ? 'tm' : ''}"><span class="muted num">${i ? (h.time === '00:00' ? t('明天') : +h.time.slice(0, 2) + t('時')) : t('現在')}</span>
-      <span class="wxi">${h.icon}</span><b class="num">${h.temp}°</b><span class="rain num">${h.rain >= 20 ? h.rain + '%' : ''}</span></div>`).join('')}</div></div>`;
+      <span class="wxi">${h.icon}</span><b class="num">${h.temp}°</b><span class="rain num">${h.rain >= 20 ? h.rain + '%' : h.rain == null && h.mm >= 0.1 ? h.mm + 'mm' : ''}</span></div>`).join('')}</div></div>`;
 }
 
 
@@ -1228,3 +1265,36 @@ function fitHome() {
   }
 }
 addEventListener('resize', () => { clearTimeout(S.fitT); S.fitT = setTimeout(fitHome, 150); });
+
+
+/* ---------- 展開／收起的動畫 ---------- */
+/* <details>：高度順順地打開、收起（瀏覽器內建是瞬間跳開） */
+document.addEventListener('click', e => {
+  const sm = e.target.closest?.('details > summary');
+  if (!sm || CALM) return;
+  const d = sm.parentNode;
+  e.preventDefault();
+  if (d._anim) return;
+  const from = d.offsetHeight;
+  let to;
+  if (d.open) { d.open = false; to = d.offsetHeight; d.open = true; }
+  else { d.open = true; to = d.offsetHeight; }
+  const closing = to < from;
+  d.style.overflow = 'hidden';
+  d._anim = d.animate({height: [from + 'px', to + 'px']}, {duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)'});
+  const body = [...d.children].filter(c => c !== sm);
+  body.forEach(c => c.animate({opacity: closing ? [1, 0] : [0, 1]}, {duration: 220, easing: 'ease', fill: 'both'}));
+  d._anim.onfinish = () => {
+    d._anim = null; d.style.overflow = '';
+    if (closing) d.open = false;
+    body.forEach(c => c.getAnimations().forEach(a => a.cancel()));
+  };
+});
+/* 開關（鬧鐘、規則）：先在畫面上切換、播完滑動動畫，再更新資料 */
+async function optimistic(el) {
+  if (el.classList.contains('sw')) { el.classList.toggle('on'); el.closest('.arow,.rule')?.classList.toggle('off', !el.classList.contains('on')); }
+  else if (el.classList.contains('chip')) { el.classList.toggle('on'); el.classList.toggle('off'); }
+  else if (el.classList.contains('bell')) el.classList.toggle('off');
+}
+/* App 開啟動畫：網頁第一次畫好才通知 App 收起動畫，首頁的進場動畫接著播 */
+window.splashGone = () => document.body.classList.remove('hold');

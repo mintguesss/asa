@@ -39,6 +39,13 @@ class MainActivity : Activity() {
     private var fileCb: ValueCallback<Array<Uri>>? = null
     private var loadedFor = ""
     private var splash: SunriseView? = null
+
+    /** 收起開啟動畫，同時讓網頁的進場動畫開始播。 */
+    private fun hideSplash() {
+        val gone = { web.evaluateJavascript("window.splashGone && splashGone()", null); Unit }
+        val sp = splash
+        if (sp == null || sp.hiding) gone() else sp.hide(gone)     // 已經收過了（例如網頁重新載入）：直接讓網頁播進場動畫
+    }
     private var geoAsk: Pair<String, GeolocationPermissions.Callback>? = null
     private var sr: SpeechRecognizer? = null
     private val REQ_GEO = 31
@@ -114,7 +121,7 @@ class MainActivity : Activity() {
         with(web.settings) {
             javaScriptEnabled = true
             domStorageEnabled = true
-            userAgentString = "$userAgentString AsaApp/1.5"
+            userAgentString = "$userAgentString AsaApp/1.8"
         }
         CookieManager.getInstance().setAcceptCookie(true)
         web.addJavascriptInterface(Bridge(), "AsaNative")
@@ -134,7 +141,7 @@ class MainActivity : Activity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 if (errBox.visibility != View.VISIBLE) web.visibility = View.VISIBLE
-                web.postDelayed({ splash?.hide() }, 150)       // 等網頁畫出第一個畫面
+                web.postDelayed({ hideSplash() }, 2500)        // 舊版網頁不會通知：載完 2.5 秒還沒收到就自己收
             }
         }
         web.webChromeClient = object : WebChromeClient() {
@@ -178,7 +185,7 @@ class MainActivity : Activity() {
         // 開啟動畫：太陽升起；網頁載入好就淡出（最多等 4 秒）
         splash = SunriseView(this)
         root.addView(splash, FrameLayout.LayoutParams(-1, -1))
-        root.postDelayed({ splash?.hide() }, 4000)
+        root.postDelayed({ hideSplash() }, 4000)
 
         setContentView(root)
         Scheduler.scheduleAll(this)
@@ -188,7 +195,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (Store.url(this).isEmpty() || Store.token(this).isEmpty()) {
-            splash?.hide()
+            hideSplash()
             openSetup()             // 第一次打開：先填網址和存取碼
             return
         }
@@ -217,7 +224,7 @@ class MainActivity : Activity() {
     }
 
     private fun showError(msg: String) {
-        splash?.hide()
+        hideSplash()
         web.visibility = View.INVISIBLE
         errText.text = Store.url(this) + "\n" + msg
         errBox.visibility = View.VISIBLE
@@ -254,7 +261,8 @@ class MainActivity : Activity() {
     inner class Bridge {
         @JavascriptInterface fun sync() = syncInBackground()
         @JavascriptInterface fun openSetup() = runOnUiThread { this@MainActivity.openSetup() }
-        @JavascriptInterface fun version(): String = "1.5"
+        @JavascriptInterface fun version(): String = "1.8"
+        @JavascriptInterface fun ready() = runOnUiThread { hideSplash() }
         @JavascriptInterface fun speak(text: String) = Voice.speak(this@MainActivity, text)
         @JavascriptInterface fun stopSpeak() = Voice.stop()
         @JavascriptInterface fun stopListen() = runOnUiThread { sr?.stopListening() }

@@ -88,33 +88,107 @@ def _desc(code: int) -> tuple[str, str]:
     return "🌡", ""
 
 
-def forecast(d: str) -> dict | None:
-    """某天的天氣：{icon, text, hi, lo, rain, now}；沒設所在地或查不到就回傳 None。一小時內用快取。"""
+FRESH = 1800             # 天氣資料半小時內不重抓
+FAIL_WAIT = 600          # 兩個服務都連不上：十分鐘內不再試（不然每次打開首頁都要等逾時）
+
+# 挪威氣象局（備用）的天氣符號 → Open-Meteo 的 WMO 代碼
+MET = [("thunder", 95), ("heavysnow", 75), ("snow", 71), ("sleet", 66), ("heavyrain", 65), ("rainshowers", 80),
+       ("lightrain", 51), ("rain", 61), ("fog", 45), ("cloudy", 3), ("partlycloudy", 2), ("fair", 1), ("clearsky", 0)]
+
+
+def _met_code(sym: str) -> int:
+    sym = (sym or "").split("_")[0]
+    if sym.startswith("partlycloudy"):
+        return 2
+    return next((c for k, c in MET if k in sym), 3)
+
+
+def _open_meteo(lat: float, lon: float) -> dict | None:
+    try:
+        r = httpx.get("https://api.open-meteo.com/v1/forecast", headers=UA, timeout=httpx.Timeout(6, connect=3), params={
+            "latitude": lat, "longitude": lon, "timezone": "auto", "forecast_days": 3, "current": "temperature_2m",
+            "hourly": "temperature_2m,weather_code,precipitation_probability",
+            "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"})
+        js = r.json() if r.status_code == 200 else None
+        h, dl = js["hourly"], js["daily"]
+    except Exception:  # noqa: BLE001
+        return None
+    hours = [{"t": t_, "code": int(c or 0), "temp": tp, "rain": pr, "mm": None}
+             for t_, tp, c, pr in zip(h["time"], h["temperature_2m"], h["weather_code"], h["precipitation_probability"])]
+    days = {d: {"code": int(c or 0), "hi": hi, "lo": lo, "rain": pr, "mm": None}
+            for d, c, hi, lo, pr in zip(dl["time"], dl["weather_code"], dl["temperature_2m_max"], dl["temperature_2m_min"],
+                                        dl["precipitation_probability_max"])}
+    return {"hours": hours, "days": days, "now": (js.get("current") or {}).get("temperature_2m")}
+
+
+def _met_no(lat: float, lon: float) -> dict | None:
+    """備用：挪威氣象局（MET Norway），不用金鑰。台灣沒有降雨機率，改給雨量。"""
+    from datetime import datetime
+    try:
+        r = httpx.get("https://api.met.no/weatherapi/locationforecast/2.0/complete", headers=UA,
+                      timeout=httpx.Timeout(10, connect=4), params={"lat": round(lat, 3), "lon": round(lon, 3)})
+        ts = (r.json() if r.status_code == 200 else None)["properties"]["timeseries"]
+    except Exception:  # noqa: BLE001
+        return None
+    hours = []
+    for x in ts:
+        n1 = x["data"].get("next_1_hours")
+        if not n1:                              # 後面的資料變成每 6 小時一筆，首頁用不到
+            break
+        t_ = datetime.fromisoformat(x["time"].replace("Z", "+00:00")).astimezone()
+        det = n1.get("details", {})
+        hours.append({"t": t_.strftime("%Y-%m-%dT%H:%M"), "code": _met_code(n1["summary"]["symbol_code"]),
+                      "temp": x["data"]["instant"]["details"].get("air_temperature"),
+                      "rain": det.get("probability_of_precipitation"), "mm": det.get("precipitation_amount")})
+    days: dict = {}
+    for h in hours:
+        days.setdefault(h["t"][:10], []).append(h)
+    out = {}
+    for d, hs in days.items():
+        temps = [h["temp"] for h in hs if h["temp"] is not None]
+        probs = [h["rain"] for h in hs if h["rain"] is not None]
+        noon = next((h for h in hs if h["t"][11:13] == "12"), None) or max(hs, key=lambda h: [x["code"] for x in hs].count(h["code"]))
+        out[d] = {"code": noon["code"], "hi": max(temps), "lo": min(temps), "rain": max(probs) if probs else None,
+                  "mm": round(sum(h["mm"] or 0 for h in hs), 1)}
+    return {"hours": hours, "days": out, "now": hours[0]["temp"] if hours else None}
+
+
+def _data() -> dict | None:
+    """所在地接下來幾天的天氣（兩個服務擇一），半小時內用快取；都連不上就沿用上次的。"""
     p = place()
     if not p.get("geo") or OFFLINE:
         return None
-    key = "wx:" + d
-    raw = db.kv_get(key)
-    if raw:
-        v = json.loads(raw)
-        if time.time() - v["ts"] < 3600:
-            return v["data"]
-    lat, lon = p["geo"]
     try:
-        r = httpx.get("https://api.open-meteo.com/v1/forecast", headers=UA, timeout=8, params={
-            "latitude": lat, "longitude": lon, "timezone": "auto", "start_date": d, "end_date": d,
-            "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
-            "current": "temperature_2m"})
-        js = r.json() if r.status_code == 200 else {}
-        dl = js["daily"]
-        icon, text = _desc(int(dl["weather_code"][0]))
-        data = {"icon": icon, "text": text, "hi": round(dl["temperature_2m_max"][0]), "lo": round(dl["temperature_2m_min"][0]),
-                "rain": dl["precipitation_probability_max"][0], "now": round(js.get("current", {}).get("temperature_2m"))
-                if js.get("current", {}).get("temperature_2m") is not None else None}
-    except Exception:  # noqa: BLE001  連不上就不顯示天氣
-        return None
-    db.kv_set(key, json.dumps({"ts": time.time(), "data": data}))
+        old = json.loads(db.kv_get("wx:raw") or "null")
+    except ValueError:
+        old = None
+    if old and old.get("geo") != p["geo"]:
+        old = None
+    if old and time.time() - old["ts"] < FRESH:
+        return old["data"]
+    if time.time() - float(db.kv_get("wx:fail") or 0) < FAIL_WAIT:
+        return old["data"] if old else None
+    lat, lon = p["geo"]
+    data = _open_meteo(lat, lon) or _met_no(lat, lon)
+    if not data:
+        db.kv_set("wx:fail", str(time.time()))
+        return old["data"] if old else None
+    db.kv_set("wx:fail", "")
+    db.kv_set("wx:raw", json.dumps({"ts": time.time(), "geo": p["geo"], "data": data}))
     return data
+
+
+def forecast(d: str) -> dict | None:
+    """某天的天氣：{icon, text, hi, lo, rain, mm, now}；沒設所在地或查不到就回傳 None。"""
+    from datetime import date as _date
+    data = _data()
+    day = (data or {}).get("days", {}).get(d)
+    if not day or day["hi"] is None:
+        return None
+    icon, text = _desc(day["code"])
+    now = data.get("now") if d == _date.today().isoformat() else None
+    return {"icon": icon, "text": text, "hi": round(day["hi"]), "lo": round(day["lo"]), "rain": day["rain"],
+            "mm": day.get("mm"), "now": round(now) if now is not None else None}
 
 
 def line(d: str, today: bool) -> str | None:
@@ -129,31 +203,27 @@ def line(d: str, today: bool) -> str | None:
         s += tr("，降雨機率 {p}%", p=w["rain"])
         if w["rain"] >= 50:
             s += tr("，記得帶傘 ☂️")
+    elif w.get("mm"):
+        s += tr("，預計雨量 {mm} 毫米", mm=w["mm"])
+        if w["mm"] >= 1:
+            s += tr("，記得帶傘 ☂️")
     return s
 
 
 def hourly() -> list[dict]:
-    """接下來 24 小時每小時的天氣（首頁用）：[{time, icon, text, temp, rain}]。半小時內用快取。"""
-    p = place()
-    if not p.get("geo") or OFFLINE:
+    """從現在這個小時開始，接下來 24 小時每小時的天氣（首頁用）。"""
+    from datetime import datetime
+    data = _data()
+    if not data:
         return []
-    raw = db.kv_get("wxh")
-    if raw:
-        v = json.loads(raw)
-        if time.time() - v["ts"] < 1800 and v.get("geo") == p["geo"]:
-            return v["data"]
-    lat, lon = p["geo"]
-    try:
-        r = httpx.get("https://api.open-meteo.com/v1/forecast", headers=UA, timeout=8, params={
-            "latitude": lat, "longitude": lon, "timezone": "auto", "forecast_hours": 24,
-            "hourly": "temperature_2m,weather_code,precipitation_probability"})
-        h = (r.json() if r.status_code == 200 else {})["hourly"]
-        data = []
-        for t_, temp, code, rain in zip(h["time"], h["temperature_2m"], h["weather_code"], h["precipitation_probability"]):
-            icon, text = _desc(int(code or 0))
-            data.append({"time": t_[11:16], "date": t_[:10], "icon": icon, "text": text,
-                         "temp": round(temp) if temp is not None else None, "rain": rain})
-    except Exception:  # noqa: BLE001
-        return []
-    db.kv_set("wxh", json.dumps({"ts": time.time(), "geo": p["geo"], "data": data}))
-    return data
+    cut = datetime.now().strftime("%Y-%m-%dT%H:00")
+    out = []
+    for h in data["hours"]:
+        if h["t"] < cut or h["temp"] is None:
+            continue
+        icon, text = _desc(h["code"])
+        out.append({"time": h["t"][11:16], "date": h["t"][:10], "icon": icon, "text": text,
+                    "temp": round(h["temp"]), "rain": h["rain"], "mm": h.get("mm")})
+        if len(out) == 24:
+            break
+    return out

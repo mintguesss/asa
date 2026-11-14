@@ -126,7 +126,7 @@ EN = {
     "目前位置": "Current location", "晴": "Sunny", "晴時多雲": "Mostly sunny", "多雲": "Partly cloudy", "陰": "Overcast", "有霧": "Foggy",
     "毛毛雨": "Drizzle", "有雨": "Rain", "大雨": "Heavy rain", "凍雨": "Freezing rain", "下雪": "Snow", "雷雨": "Thunderstorms",
     "{icon} {where}：{text}，{lo}～{hi}°C": "{icon} {where}: {text}, {lo}–{hi}°C", "（現在 {t}°C）": " (now {t}°C)",
-    "，降雨機率 {p}%": ", {p}% chance of rain", "，記得帶傘 ☂️": ", take an umbrella ☂️",
+    "，降雨機率 {p}%": ", {p}% chance of rain", "，記得帶傘 ☂️": ", take an umbrella ☂️", "，預計雨量 {mm} 毫米": ", about {mm} mm of rain",
     "地圖上找不到這個地方，換個寫法試試（例如「桃園市中壢區」）": "Couldn't find that place on the map. Try another spelling (e.g. a city name)",
     "查不到座標：連不上地圖服務，等一下再試": "Couldn't reach the map service. Try again later",
     "預設": "default", "先填家的地址": "Set your home address first",

@@ -58,10 +58,20 @@ class SunriseView(c: Context) : View(c) {
         cv.drawRect(cx - half, oy + 345 * s, cx + half, oy + 370 * s, bar)
     }
 
-    /** 網頁好了：等太陽升完，再淡出、移除。 */
-    fun hide() {
+    var hiding = false
+        private set
+
+    /** 網頁好了：等太陽升完，再慢慢放大、淡出（跟首頁的進場動畫同時進行）。onStart = 開始退場時呼叫。 */
+    fun hide(onStart: () -> Unit = {}) {
+        if (hiding) return
         val go = {
-            animate().alpha(0f).setDuration(220).withEndAction { visibility = GONE }.start()
+            if (!hiding) {
+                hiding = true
+                onStart()
+                animate().alpha(0f).scaleX(1.06f).scaleY(1.06f).setDuration(420)
+                    .setInterpolator(android.view.animation.AccelerateDecelerateInterpolator())
+                    .withEndAction { visibility = GONE }.start()
+            }
             Unit
         }
         if (risen) go() else pendingHide = go
