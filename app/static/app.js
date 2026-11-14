@@ -34,7 +34,7 @@ async function api(path, method = 'GET', body) {
     return structuredClone(CACHE.get(path));
   }
   if (method === 'GET') return structuredClone((await getFresh(path)).v);
-  if (method !== 'GET') CACHE.clear();              // 改了東西：舊的快取都不能用了
+  if (method !== 'GET') { CACHE.clear(); S.full = true; }   // 改了東西：舊的快取都不能用了
   return apiRaw(path, method, body);
 }
 async function getFresh(path) {
@@ -191,10 +191,36 @@ async function render(quiet) {
   drawRail();
   document.body.classList.toggle('bare', bare());
   if (!bare()) $('#mtitle').innerHTML = '';
+  // 使用者剛改了東西（S.full）就整頁重畫，表單才會清空；背景更新才用只換卡片的方式
+  if (!S.enter && !S.full && S.lastView === S.view && (html === S.lastHtml || morph(html))) { S.lastHtml = html; fitHome(); return; }
+  S.lastView = S.view; S.lastHtml = html; S.full = false;
   $('#view').innerHTML = html;
+  const tpl = document.createElement('template'); tpl.innerHTML = html;
+  const src = [...tpl.content.querySelectorAll('.card')].map(c => c.outerHTML);
+  $('#view').querySelectorAll('.card').forEach((c, i) => { c._src = src[i]; });
+  S.skel = skeleton(tpl.content);
   decorate();
   fitHome();
   window.scrollTo(0, y);
+}
+/* 同一頁資料有變（例如手機剛同步、時間過了一分鐘）：只換掉有變的那幾張卡片，不整頁重畫（整頁重畫會閃） */
+function skeleton(frag) {
+  const d = document.createElement('div'); d.append(frag.cloneNode(true));
+  d.querySelectorAll('.card').forEach(c => c.replaceWith(document.createComment('card')));
+  return d.innerHTML;
+}
+function morph(html) {
+  const v = $('#view'), tpl = document.createElement('template'); tpl.innerHTML = html;
+  const nc = [...tpl.content.querySelectorAll('.card')], oc = [...v.querySelectorAll('.card')];
+  if (nc.length !== oc.length || oc.some(c => !c._src) || skeleton(tpl.content) !== S.skel) return false;
+  nc.forEach((n, i) => {
+    const src = n.outerHTML;
+    if (src === oc[i]._src) return;
+    oc[i].replaceWith(n); n._src = src;
+    n.classList.add('border-glow-card'); n.style.setProperty('--i', i + 2); n.insertAdjacentHTML('beforeend', '<span class="edge-light"></span>');
+    n.querySelectorAll('.seg').forEach(segSync);
+  });
+  return true;
 }
 
 /* ---------- 共用元件 ---------- */
@@ -1186,8 +1212,9 @@ function fitHome() {
   const ev = st.querySelector('.card'), dock = $('#rail')?.closest('.dock') || document.querySelector('.dock');
   if (!ev || !dock) return;
   ev.style.minHeight = '';
+  const em0 = ev.querySelector('.empty'); if (em0) em0.style.paddingTop = em0.style.paddingBottom = '';
   let y = 0; for (let el = st; el; el = el.offsetParent) y += el.offsetTop;     // 不受進場動畫位移影響
-  const extra = dock.getBoundingClientRect().top - 10 - (y + st.offsetHeight);
+  const extra = dock.getBoundingClientRect().top - 20 - (y + st.offsetHeight);
   if (extra > 0) ev.style.minHeight = ev.offsetHeight + extra + 'px';
   else if (extra < 0) {                             // 稍微超出：先把「沒有行程」上下的留白縮掉
     const em = ev.querySelector('.empty');

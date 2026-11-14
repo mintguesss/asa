@@ -981,3 +981,7 @@ input.tp{cursor:pointer;caret-color:transparent}
 .wxc{flex:none;width:52px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;border-radius:14px;background:rgba(var(--w),.06);font-size:12px}
 .wxc .wxi{font-size:20px}.wxc b{font-size:14px}.wxc .rain{color:var(--a1t,var(--a1));font-size:11px;min-height:13px}
 .wxc.tm{opacity:.75}
+
+/* 天氣格子小一點 */
+.wxnow{margin:0 0 8px;gap:8px}.wxnow b{font-size:24px}.wxnow .wxi{font-size:22px}
+.wxh{gap:5px}.wxc{width:44px;padding:6px 0;gap:2px;border-radius:12px;font-size:11px}.wxc .wxi{font-size:16px}.wxc b{font-size:13px}.wxc .rain{font-size:10px;min-height:12px}
