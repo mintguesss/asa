@@ -5,7 +5,7 @@
 """
 from datetime import date, datetime, timedelta
 
-from . import commute, core, db, i18n, profiles
+from . import core, db, i18n, profiles
 
 
 def seed() -> None:
@@ -115,11 +115,6 @@ def seed() -> None:
             db.run("INSERT INTO activity (actor, action, title, owner, ref_id, body, created) VALUES (?,?,?,?,?,?,datetime('now','localtime',?))",
                    (actor, action, title, owner, ref, body, ago))
 
-    # 通勤：常用地點的交通時間，鬧鐘會再往前扣（示範模式不連外部服務，所以不估路線也不查天氣）
-    commute.save({"on": True, "home": L("桃園市中壢區中大路 300 號", "300 Zhongda Rd, Taoyuan"), "default": 10, "rain": 10})
-    for name, m in [(L("理學院", "Science"), 12), (L("工程五館", "Eng. Bldg 5"), 15), (L("資電館", "CS Hall"), 15),
-                    (L("活動中心", "Student Center"), 10)]:
-        commute.set_place(name, m)
     for n in range(0, 14):
         core.regenerate_plan(day(n))
     # 互相叫起床：小美用推播叫起床，今天最後一個鬧鐘已經過了還沒按「我醒了」

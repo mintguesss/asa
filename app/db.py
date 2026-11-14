@@ -128,11 +128,6 @@ CREATE TABLE IF NOT EXISTS profiles (        -- 成員名單（只用第一位�
     avatar TEXT,                    -- 頭貼的版本（上傳時間）；檔案在 data/asa-avatars/<id>.<副檔名>
     buddy_minutes INTEGER DEFAULT 10    -- 最後一個鬧鐘過了幾分鐘還沒醒，就通知其他成員；0 = 不通知
 );
-CREATE TABLE IF NOT EXISTS places (          -- 常用地點的交通時間（通勤自動提早鬧鐘用）
-    name TEXT PRIMARY KEY,
-    minutes INTEGER NOT NULL,
-    auto INTEGER DEFAULT 0          -- 1 = 自動估的
-);
 """
 
 # 目前是哪位成員：每位成員一個資料庫檔，私人資料天生分開（見 profiles.py）

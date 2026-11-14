@@ -1,7 +1,7 @@
 """核心邏輯：某天的行程、鬧鐘排程、每日簡報文字。"""
 from datetime import date, datetime, timedelta
 
-from . import commute, db, profiles, social, wake
+from . import db, profiles, social, wake, weather
 from .i18n import tr, wd as wd_name
 
 WD = "一二三四五六日"
@@ -83,11 +83,6 @@ def compute_alarms(d: str) -> tuple[list[str], str]:
             t = datetime.fromisoformat(f"{d}T{ev['time']}")
             first = t - timedelta(minutes=rule["lead_minutes"])
             why = tr("{time} {title}，提前 {lead} 分鐘開始", time=ev["time"], title=ev["title"], lead=rule["lead_minutes"])
-            go = commute.plan_for(d, ev)        # 開了通勤：再扣掉交通時間（下雨多留一點）
-            if go:
-                first -= timedelta(minutes=go[0])
-                why = tr("{time} {title}：準備 {lead} 分鐘＋{go}", time=ev["time"], title=ev["title"],
-                         lead=rule["lead_minutes"], go=go[1])
     if first is None and rule["fixed_time"]:
         first = datetime.fromisoformat(f"{d}T{rule['fixed_time']}")
         why = tr("固定時間 {time}" if rule["anchor"] == "fixed" else "當天沒有行程，用備用時間 {time}", time=rule["fixed_time"])
@@ -155,14 +150,15 @@ def brief_text(d: str, kind: str) -> str:
     s = day_summary(d)
     head = tr("🌙 明日預告") if kind == "evening" else tr("☀️ 今日簡報")
     lines = [tr("{head}｜{date}（{wd}）", head=head, date=d[5:], wd=wd_name(date.fromisoformat(d).weekday()))]
+    wx = weather.line(d, kind == "morning")
+    if wx:
+        lines.append(wx)
     if s["skip"]:
         lines.append(f"🚫 {s['skip']['reason'] or tr('放假')}")
 
     on = [a["time"] for a in s["alarms"] if a["enabled"]]
     if kind == "evening" and profiles.current()["alarm_mode"] != "off":
         lines.append(tr("⏰ 鬧鐘 {n} 個：{a}～{b}", n=len(on), a=on[0], b=on[-1]) if on else tr("⏰ 明天沒有排鬧鐘"))
-        if on and commute.settings()["on"] and db.kv_get("plan_reason:" + d):
-            lines.append("   " + db.kv_get("plan_reason:" + d))
 
     lines.append(tr("📅 行程：") + ("" if s["events"] else tr("無")))
     for e in s["events"]:

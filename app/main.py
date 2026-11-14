@@ -17,7 +17,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import closures, commute, core, db, demo, i18n, insights, notify, profiles, quick, social, sources, wake
+from . import closures, core, db, demo, i18n, insights, notify, profiles, quick, social, sources, wake, weather
 from .i18n import tr
 
 ROOT = Path(__file__).resolve().parent
@@ -37,7 +37,7 @@ if DEMO:
     for _old in db.DB_PATH.parent.glob("demo*.db*"):
         _old.unlink(missing_ok=True)
     shutil.rmtree(db.DB_PATH.parent / "demo-avatars", ignore_errors=True)
-    commute.OFFLINE = True
+    weather.OFFLINE = True
 
 
 def today() -> str:
@@ -121,8 +121,6 @@ def job_minute() -> None:
                     notify.send(tr("⏰ 起床！（第 {i}／{n} 個）", i=i + 1, n=len(on))
                                 + (tr("\n{time} {title}", time=nxt["time"], title=nxt["title"]) if nxt else "")
                                 + (tr("\n醒了就點：{url}", url=link[0] + "/?awake=1") if link else ""), urgent=i == len(on) - 1)
-        if hm_now == "05:00" and commute.settings()["on"]:
-            commute_refresh()
         if p["remind_minutes"]:
             later = now + timedelta(minutes=p["remind_minutes"])
             if later.date() == now.date():
@@ -136,18 +134,6 @@ def job_minute() -> None:
 def job_wake() -> None:
     urls = server_urls()
     wake.job(urls[0] + "/?view=day" if urls else "")
-
-
-def commute_refresh() -> None:
-    """清晨用最新的降雨預報重排今天的鬧鐘；變早了就推播說一聲。"""
-    d, now = today(), datetime.now().strftime("%H:%M")
-    before = [a["time"] for a in core.plan(d) if a["enabled"] and a["source"] == "auto"]
-    if not before or before[0] <= now:
-        return
-    after = [a["time"] for a in core.regenerate_plan(d)["alarms"] if a["enabled"]]
-    if after and after[0] < before[0]:
-        notify.send(tr("🌧 {why}\n⏰ 鬧鐘提早到 {t}（原本 {b}）", why=db.kv_get("plan_reason:" + d) or "",
-                       t=after[0], b=before[0]))
 
 
 def inbox_add(data: dict, silent: bool = False) -> int | None:
@@ -328,15 +314,20 @@ def service_worker():
 
 
 # ---------- 總覽 ----------
+def cal_view(s: dict) -> dict:
+    """日曆畫面不放固定行程（固定行程頁另外看），鬧鐘、簡報照樣會算進去。"""
+    return s | {"events": [e for e in s["events"] if e.get("source") != "weekly"]}
+
+
 @app.get("/api/day")
 def api_day(d: str | None = None):
-    return core.day_summary(d or today())
+    return cal_view(core.day_summary(d or today()))
 
 
 @app.get("/api/week")
 def api_week(d: str | None = None):
     mon = date.fromisoformat(core.week_monday(d or today()))
-    return [core.day_summary((mon + timedelta(days=i)).isoformat()) for i in range(7)]
+    return [cal_view(core.day_summary((mon + timedelta(days=i)).isoformat())) for i in range(7)]
 
 
 @app.get("/api/month")
@@ -355,7 +346,7 @@ def api_month(d: str | None = None):
             "events": [{"time": e["time"], "title": e["title"],
                         "kind": "weekly" if e.get("source") == "weekly" else "shared" if e.get("shared") or e.get("owner") else "mine",
                         "color": (profiles.get(e["owner"]) or {}).get("color") if e.get("owner") else None}
-                       for e in evs if not e["title"].startswith("⏰")],
+                       for e in evs if not e["title"].startswith("⏰") and e.get("source") != "weekly"],
             "due": [t["title"] for t in db.rows("SELECT title FROM tasks WHERE done=0 AND substr(due,1,10)=?", (day,))],
             "tasks": db.one("SELECT COUNT(*) n FROM tasks WHERE done=0 AND scope='day' AND plan_date=?", (day,))["n"],
             "alarm": on[0] if on else None, "alarms": len(on),
@@ -754,49 +745,22 @@ def wake_nudge(pid: int):
     return r
 
 
-# ---------- 通勤 ----------
-@app.get("/api/commute")
-def get_commute():
-    return {"settings": commute.settings(), "places": commute.places()}
+# ---------- 個人助理：所在地（天氣） ----------
+@app.get("/api/place")
+def get_place():
+    p = weather.place()
+    return {"name": p.get("name", ""), "weather": weather.forecast(today()) if p else None}
 
 
-@app.patch("/api/commute")
-def edit_commute(body: dict = Body(...)):
+@app.patch("/api/place")
+def edit_place(body: dict = Body(...)):
     try:
-        s = commute.save(body)
-    except (TypeError, ValueError):
-        raise HTTPException(400, tr("設定值不正確")) from None
-    refresh_tomorrow()
-    return {"settings": s}
-
-
-@app.post("/api/commute/places")
-def add_place(body: dict = Body(...)):
-    try:
-        commute.set_place(str(body.get("name", "")), int(body.get("minutes", 0)))
-    except (TypeError, ValueError):
-        raise HTTPException(400, tr("設定值不正確")) from None
-    refresh_tomorrow()
-    return {"ok": True}
-
-
-@app.delete("/api/commute/places/{name}")
-def del_place(name: str):
-    commute.del_place(name)
-    refresh_tomorrow()
-    return {"ok": True}
-
-
-@app.post("/api/commute/estimate")
-def estimate_place(body: dict = Body(...)):
-    loc = str(body.get("location", "")).strip()
-    if not commute.settings()["home"]:
-        raise HTTPException(400, tr("先填家的地址"))
-    m = commute.estimate(loc) if loc else None
-    if m is None:
-        raise HTTPException(404, tr("估不出來：地圖上找不到這個地點，請自己填分鐘數"))
-    refresh_tomorrow()
-    return {"minutes": m}
+        p = weather.set_place(str(body.get("name", "")))
+    except ValueError:
+        raise HTTPException(404, tr("地圖上找不到這個地方，換個寫法試試（例如「桃園市中壢區」）")) from None
+    except Exception:  # noqa: BLE001
+        raise HTTPException(502, tr("查不到座標：連不上地圖服務，等一下再試")) from None
+    return {"name": p.get("name", ""), "weather": weather.forecast(today()) if p else None}
 
 
 # ---------- 快速輸入 ----------

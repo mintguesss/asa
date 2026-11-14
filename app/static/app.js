@@ -670,35 +670,6 @@ function triage(ok) {
 }
 
 /* ---------- 鬧鐘 ---------- */
-/* ---------- 通勤：依地點的交通時間（下雨多留一點）自動提早鬧鐘 ---------- */
-const cset = async b => { await api('/commute', 'PATCH', b); render(); };
-async function addPlace(f) {
-  const d = formData(f);
-  if (!d.name) return;
-  if (d.minutes) await api('/commute/places', 'POST', {name: d.name, minutes: +d.minutes});
-  else { toast(t('估算中…')); const r = await api('/commute/estimate', 'POST', {location: d.name}); toast(t('估計 {0} 分鐘', r.minutes)); }
-  render();
-}
-function commuteCard(cm, s) {
-  const c = cm.settings, num = (k, max) => `<input class="field num" type="number" min="0" max="${max}" value="${c[k]}" style="width:70px" onchange="cset({${k}:+this.value})">`;
-  const known = cm.places.map(p => p.name);
-  const miss = [...new Set(s.events.map(e => e.location).filter(l => l && !known.some(k => l.includes(k) || k.includes(l))))];
-  return `<div class="card commute ${c.on ? '' : 'off'}"><h3>${t('通勤')}<span class="r"><button class="sw ${c.on ? 'on' : ''}" title="${c.on ? t('啟用中') : t('已停用')}" onclick="cset({on:${!c.on}})"><i></i></button></span></h3>
-    <div class="muted cm-tip">${t('開啟後，鬧鐘會再往前扣掉從家裡到行程地點的交通時間，預報會下雨就多留幾分鐘。規則裡的「提前」就只算準備時間（梳洗、吃早餐）。')}</div>
-    ${c.on ? `<dl class="kv">
-      <dt>${t('家的地址')}</dt><dd><input class="field" value="${esc(c.home)}" placeholder="${t('例：桃園市中壢區中大路 300 號')}" onchange="cset({home:this.value})"></dd>
-      <dt>${t('交通方式')}</dt><dd><div class="seg sm">${[['car', '機車／開車'], ['bike', '腳踏車'], ['foot', '走路']].map(([v, l]) => `<button class="${c.mode === v ? 'on' : ''}" onclick="cset({mode:'${v}'})">${t(l)}</button>`).join('')}</div></dd>
-      <dt>${t('其他地點')}</dt><dd>${num('default', 240)} <span class="muted">${t('分鐘（沒對上常用地點、也估不出來時）')}</span></dd>
-      <dt>${t('下雨多留')}</dt><dd>${num('rain', 120)} <span class="muted">${t('分鐘（降雨機率 50% 以上）')}</span></dd></dl>
-    <h4 class="cm-h">${t('常用地點')}</h4>
-    <div class="places">${cm.places.map(p => `<div class="wrow place"><b>${esc(p.name)}</b>${p.auto ? `<span class="pill">${t('自動估')}</span>` : ''}<span class="sp"></span>
-        <input class="field num" type="number" min="0" max="300" value="${p.minutes}" style="width:64px" onchange="api('/commute/places','POST',{name:${esc(JSON.stringify(p.name))},minutes:+this.value}).then(render)"><span class="muted">${t('分')}</span>
-        <button class="x" onclick="act('/commute/places/'+encodeURIComponent(${esc(JSON.stringify(p.name))}),'DELETE')" aria-label="${t('刪除')}">✕</button></div>`).join('') || `<div class="empty">${t('還沒有常用地點')}</div>`}</div>
-    ${miss.length ? `<div class="miss"><span class="muted">${t('明天的地點還沒設：')}</span>${miss.map(l => `<button class="chip" onclick="const f=document.querySelector('.cm-add');f.name.value=${esc(JSON.stringify(l))};f.minutes.focus()">${esc(l)}</button>`).join('')}</div>` : ''}
-    <form class="addrow cm-add" onsubmit="event.preventDefault();addPlace(this)"><input class="field" name="name" placeholder="${t('地點（例：理學院）')}" required>
-      <input class="field num" type="number" name="minutes" min="0" max="300" placeholder="${t('分鐘')}" style="width:80px"><button class="btn pri">${t('加入')}</button></form>
-    <div class="muted cm-tip">${t('分鐘留空會用 OpenStreetMap 自動估（不含即時路況和大眾運輸；搭捷運、公車請自己填）。地址和地點只會送去 OpenStreetMap 和 Open-Meteo 查詢。')}</div>` : ''}</div>`;
-}
 function ruleCard(r) {
   const wds = r.weekdays.split(',').filter(k => k !== '');
   const tog = i => { const s = new Set(wds); s.has(String(i)) ? s.delete(String(i)) : s.add(String(i)); return [...s].sort().join(','); };
@@ -746,7 +717,7 @@ VIEW.alarms = async () => {
   const td = TODAY(), tm = shift(td, 1);
   if (!S.aday) S.aday = new Date().getHours() < 12 ? 'td' : 'tm';
   const d = S.aday === 'td' ? td : tm;
-  const [rules, s, p, ins, cm, ph] = await Promise.all([api('/alarms/rules'), api('/day?d=' + tm), api('/alarms/plan?d=' + d), api('/alarms/insights'), api('/commute'), api('/alarms/phone')]);
+  const [rules, s, p, ins, ph] = await Promise.all([api('/alarms/rules'), api('/day?d=' + tm), api('/alarms/plan?d=' + d), api('/alarms/insights'), api('/alarms/phone')]);
   const tips = ins.suggestions.filter(k => k.patch);
   return `<section class="hero"><div class="seg sm aday">${[['td', '今天', td], ['tm', '明天', tm]].map(([v, l, x]) => `<button class="${S.aday === v ? 'on' : ''}" onclick="alarmDay('${v}')">${t(l)} <span class="num">${md(x)}</span></button>`).join('')}</div>
       ${alarmList(p.alarms, d)}${phoneLine(ph)}
@@ -755,7 +726,6 @@ VIEW.alarms = async () => {
       <button class="btn sun" onclick='act("/alarms/rules/${k.rule_id}","PATCH",${JSON.stringify(k.patch)},"${t('已套用')}")'>${t('套用')}</button></div>`).join('')}
     <div class="rules">${rules.map(ruleCard).join('')}
       <button class="rule add" onclick="act('/alarms/rules','POST',{name:'${t('新規則')}',weekdays:'',anchor:'first_event',lead_minutes:90,count:6,interval_minutes:5})"><span>＋</span>${t('新增規則')}</button></div>
-    ${commuteCard(cm, s)}
     ${ins.mornings.length ? `<details class="fold"><summary>${t('起床紀錄')}</summary><div class="card">${ins.mornings.slice(0, 10).map(m => `<div class="task"><div class="body num">${md(m.date)} ${WDN[m.weekday]}　${m.first}–${m.last}　→　<b>${m.awake}</b><span class="muted">　${m.rang}/${m.count}</span></div></div>`).join('')}</div></details>` : ''}`;
 };
 
@@ -788,7 +758,7 @@ async function addWeekly(f) {
 /* ---------- 設定 ---------- */
 const sent = r => { const ok = Object.entries(r).filter(([, v]) => v !== '未設定'); toast(ok.length ? ok.map(([k, v]) => `${k}: ${v}`).join(' | ') : t('還沒有設定任何通知管道')); };
 VIEW.link = async () => {
-  const [st, br, ph] = await Promise.all([api('/status'), api('/brief'), api('/alarms/phone')]);
+  const [st, br, ph, pl] = await Promise.all([api('/status'), api('/brief'), api('/alarms/phone'), api('/place')]);
   const url = st.urls[0] || `http://${t('這台電腦的IP')}:${location.port || 80}`;
   const pref = palPref(), th = document.documentElement.dataset.theme;
   const look = `<div class="card"><h3>${t('外觀')}</h3><dl class="kv">
@@ -840,12 +810,12 @@ VIEW.link = async () => {
          <div class="addrow"><button class="btn pri" onclick="AsaNative.openSetup()">${t('App 設定（權限、測試鬧鐘、連線）')}</button></div>`
       : `<div class="muted">${t('Android 手機裝 Asa App，鬧鐘才會在鎖定畫面響鈴；iPhone 改用推播叫你。')}</div>${phoneLine(ph)}
          <div class="addrow"><a class="btn pri" href="/phone">${t('把 Asa 裝到手機')}</a></div>`}</div>`;
-  return `<div class="cols"><div class="stack">${phone}${members}</div><div class="stack">${look}${more}</div></div>`;
+  return `<div class="cols"><div class="stack">${placeCard(pl)}${phone}${members}</div><div class="stack">${look}${more}</div></div>`;
 };
 
 /* ---------- 頂列：指令列、語言、亮暗 ---------- */
 const TYPE = {event: '📅', task: '☑️', alarm: '⏰', weekly: '🗓', error: '⚠️'};
-const setPlaceholder = () => $('#cmd').placeholder = MOB() ? t('說一句話：明天三點 開會') : t('說一句話：明天下午三點 開會 @會議室｜週五前 交報告｜鬧鐘 明天 7:30');
+const setPlaceholder = () => $('#cmd').placeholder = MOB() ? t('打字或按 🎤：明天三點 開會') : t('打字或按 🎤 說：明天下午三點 開會 @會議室｜週五前 交報告｜鬧鐘 明天 7:30');
 setPlaceholder();
 $('#theme').title = t('切換亮色／暗色');
 $('#theme').onclick = () => toggleTheme().then(() => { if (S.view === 'link') render(); });
@@ -1083,4 +1053,60 @@ async function saveEvent(f, id, q) {
 async function delEvent(id, q) {
   if (!await ask(t('刪除這個行程？'))) return;
   await api(`/events/${id}${q}`, 'DELETE'); toast(t('已刪除')); closeSheet();
+}
+
+
+/* ---------- 個人助理：早安簡報（唸出來）、語音輸入 ---------- */
+const plain = s => s.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE0F}\u{2300}-\u{23FF}☐]/gu, '').replace(/｜/g, '，').replace(/～/g, '到');
+function speak(text) {
+  const s = plain(text);
+  if (NATIVE && AsaNative.speak) return AsaNative.speak(s);
+  if (!window.speechSynthesis) return toast(t('這個瀏覽器不能朗讀'));
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(s); u.lang = LANG === 'en' ? 'en-US' : 'zh-TW'; u.rate = 1.05;
+  speechSynthesis.speak(u);
+}
+function stopSpeak() { if (NATIVE && AsaNative.stopSpeak) AsaNative.stopSpeak(); else window.speechSynthesis?.cancel(); }
+async function showBrief(kind = 'morning', autoSpeak = false) {
+  const r = await api('/brief?kind=' + kind);
+  const d = sheetBox(`<div class="sh-h"><b>${kind === 'morning' ? t('早安') + ' ☀️' : t('明日預告')}</b><button class="x" data-v="0" aria-label="${t('關閉')}">✕</button></div>
+    <pre class="brief">${esc(r.text)}</pre>
+    <div class="askrow"><button class="btn" data-v="say">🔊 ${t('唸給我聽')}</button><button class="btn pri" data-v="0">${t('好')}</button></div>`, 'briefbox');
+  d.onclick = e => {
+    const b = e.target === d ? {dataset: {v: '0'}} : e.target.closest('[data-v]'); if (!b) return;
+    if (b.dataset.v === 'say') return speak(r.text);
+    stopSpeak(); closeBox(d);
+  };
+  if (autoSpeak) speak(r.text);
+}
+/* 🎤：App 裡用手機的語音辨識，瀏覽器裡用 Web Speech（Chrome 支援） */
+function listen() {
+  if (NATIVE && AsaNative.listen) return AsaNative.listen();
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return toast(t('這個瀏覽器不支援語音輸入，可以用鍵盤上的麥克風'));
+  const r = new SR(); r.lang = LANG === 'en' ? 'en-US' : 'zh-TW'; r.interimResults = false;
+  $('#mic').classList.add('on');
+  r.onresult = e => window.onVoice(e.results[0][0].transcript);
+  r.onerror = e => { if (e.error !== 'no-speech' && e.error !== 'aborted') toast(t('沒聽清楚，再說一次')); };
+  r.onend = () => $('#mic').classList.remove('on');
+  r.start();
+}
+window.onVoice = async text => {
+  $('#mic')?.classList.remove('on');
+  text = (text || '').trim(); if (!text) return toast(t('沒聽清楚，再說一次'));
+  const p = await api('/quick', 'POST', {text, dry: true});
+  if (p.type === 'error') { $('#cmd').value = text; $('#cmd').focus(); return toast(t('聽到「{0}」，但看不懂：', text) + p.summary); }
+  if (!await ask(`🎤 ${text}\n\n${TYPE[p.type] || ''} ${p.summary.replaceAll('｜', ' · ')}`, t('建立'), false)) return;
+  await api('/quick', 'POST', {text}); toast(t('已建立：') + p.summary.replaceAll('｜', ' · ')); render();
+};
+$('#mic').onclick = listen;
+if (QS.get('brief')) { history.replaceState(null, '', location.pathname); setTimeout(() => showBrief('morning', false), 600); }
+function placeCard(pl) {
+  const w = pl.weather;
+  return `<div class="card"><h3>${t('個人助理')}</h3>
+    <div class="muted">${t('起床按「我醒了」之後，App 會唸今天的天氣、行程和待辦給你聽；早上的推播簡報也會附上天氣。')}</div>
+    <dl class="kv"><dt>${t('所在地')}</dt><dd><form class="addrow" style="margin:0" onsubmit="event.preventDefault();api('/place','PATCH',{name:this.n.value}).then(()=>{toast(t('已儲存'));render()})">
+      <input class="field" name="n" value="${esc(pl.name)}" placeholder="${t('例：桃園市中壢區')}" style="max-width:200px"><button class="btn">${t('儲存')}</button></form></dd>
+      ${w ? `<dt>${t('今天')}</dt><dd>${w.icon} ${esc(w.text)} ${w.lo}～${w.hi}°C${w.rain != null ? ' · ☔ ' + w.rain + '%' : ''}</dd>` : ''}</dl>
+    <div class="addrow"><button class="btn" onclick="showBrief('morning')">☀️ ${t('看早安簡報')}</button><button class="btn ghost" onclick="showBrief('evening')">🌙 ${t('看明日預告')}</button></div></div>`;
 }

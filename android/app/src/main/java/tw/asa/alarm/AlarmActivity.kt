@@ -88,6 +88,11 @@ class AlarmActivity : Activity() {
                 Api.log(this, "awake", item)
                 stopService(Intent(this, AlarmService::class.java))
                 Toast.makeText(this, tr("早安！已取消後面 $n 個鬧鐘", "Good morning! Cancelled $n remaining alarms"), Toast.LENGTH_LONG).show()
+                Voice.morningBrief(this)            // 唸今天的天氣、行程、待辦
+                try {
+                    startActivity(Intent(this, MainActivity::class.java).putExtra("brief", true)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                } catch (_: Exception) { }
                 finish()
             } else {
                 answer.setText("")

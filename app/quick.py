@@ -83,7 +83,7 @@ def _take(text: str, pattern: str):
 
 def parse(text: str, today: date | None = None) -> dict:
     today = today or date.today()
-    raw = text.strip()
+    raw = text.strip().strip("。，,.！!？? ")          # 語音辨識常會在句尾加標點
     t = _english(raw)
     out: dict = {"raw": raw}
 
@@ -92,6 +92,10 @@ def parse(text: str, today: date | None = None) -> dict:
     m, t = _take(t, r"^\s*(鬧鐘|叫我|叫醒我)")
     if m:
         is_alarm = True
+    m, t = _take(t, r"(?:叫我起床|叫醒我|起床|的鬧鐘)\s*$")       # 「明天七點半叫我起床」
+    if m:
+        is_alarm = True
+    t = re.sub(r"^\s*(?:提醒我|幫我|我要|記得)\s*", "", t)          # 口語開頭不算進標題
     weekly_wd = None
     m, t = _take(t, r"每(?:週|周|星期|禮拜)([一二三四五六日天])")
     if m:

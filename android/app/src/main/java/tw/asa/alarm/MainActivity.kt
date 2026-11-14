@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
+import android.speech.RecognizerIntent
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
@@ -54,7 +55,7 @@ class MainActivity : Activity() {
         with(web.settings) {
             javaScriptEnabled = true
             domStorageEnabled = true
-            userAgentString = "$userAgentString AsaApp/1.3"
+            userAgentString = "$userAgentString AsaApp/1.4"
         }
         CookieManager.getInstance().setAcceptCookie(true)
         web.addJavascriptInterface(Bridge(), "AsaNative")
@@ -121,7 +122,9 @@ class MainActivity : Activity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         if (intent.getBooleanExtra("reload", false)) loadedFor = ""
+        if (intent.getBooleanExtra("brief", false)) loadedFor = ""
     }
 
     /** 換了伺服器或存取碼才重新載入；force = 錯誤畫面按「重試」。 */
@@ -131,7 +134,10 @@ class MainActivity : Activity() {
         loadedFor = key
         errBox.visibility = View.GONE
         web.visibility = View.INVISIBLE
-        web.loadUrl(Store.url(this) + "/?token=" + Uri.encode(Store.token(this)))
+        // 剛按完「我醒了」：網頁打開早安簡報（App 已經唸過了，網頁只顯示）
+        val brief = intent?.getBooleanExtra("brief", false) == true
+        intent?.removeExtra("brief")
+        web.loadUrl(Store.url(this) + "/?token=" + Uri.encode(Store.token(this)) + (if (brief) "&brief=1" else ""))
     }
 
     private fun showError(msg: String) {
@@ -156,6 +162,10 @@ class MainActivity : Activity() {
             fileCb?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data))
             fileCb = null
         }
+        if (requestCode == 8) {         // 語音辨識的結果交給網頁
+            val text = if (resultCode == RESULT_OK) data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull().orEmpty() else ""
+            web.evaluateJavascript("window.onVoice && window.onVoice(" + org.json.JSONObject.quote(text) + ")", null)
+        }
     }
 
     @Deprecated("Deprecated in Java")
@@ -167,6 +177,17 @@ class MainActivity : Activity() {
     inner class Bridge {
         @JavascriptInterface fun sync() = syncInBackground()
         @JavascriptInterface fun openSetup() = runOnUiThread { this@MainActivity.openSetup() }
-        @JavascriptInterface fun version(): String = "1.3"
+        @JavascriptInterface fun version(): String = "1.4"
+        @JavascriptInterface fun speak(text: String) = Voice.speak(this@MainActivity, text)
+        @JavascriptInterface fun stopSpeak() = Voice.stop()
+        @JavascriptInterface fun listen() = runOnUiThread {
+            val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (java.util.Locale.getDefault().language == "zh") "zh-TW" else java.util.Locale.getDefault().toLanguageTag())
+                .putExtra(RecognizerIntent.EXTRA_PROMPT, tr("說一句話，例如「明天下午三點開會」", "Say something, e.g. \"meeting tomorrow at 3pm\""))
+            try { startActivityForResult(i, 8) } catch (_: Exception) {
+                web.evaluateJavascript("toast(" + org.json.JSONObject.quote(tr("這支手機沒有語音辨識，可以用鍵盤上的麥克風", "No speech recognition on this phone; try the keyboard mic")) + ")", null)
+            }
+        }
     }
 }
