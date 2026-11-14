@@ -312,13 +312,15 @@ void main() {
       state.reach += ((engaged ? 1 : 0) - state.reach) * (1 - Math.exp(-dt / (engaged ? 0.9 : 1.4)));
       if (state.reveal < 1) state.reveal = Math.min(1, state.reveal + dt / INTRO_SECONDS);
       render();
-      if (!reduce || state.reveal < 1) raf = requestAnimationFrame(frame);
+      // still（手機）：開場和換色的過渡跑完就停在那一格，不再每秒重畫 60 次
+      const moving = current.some((c, i) => c.some((v, j) => Math.abs(target[i][j] - v) > 0.002));
+      if ((!reduce && !s.still) || state.reveal < 1 || moving) raf = requestAnimationFrame(frame);
     };
     const wake = () => { if (!raf && !document.hidden) raf = requestAnimationFrame(frame); };
 
     const resize = () => {
       const width = Math.max(1, container.clientWidth), height = Math.max(1, container.clientHeight);
-      const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
+      const ratio = Math.min(window.devicePixelRatio || 1, s.maxRatio || 1.5);
       view.width = width; view.height = height;
       canvas.width = Math.max(1, Math.round(width * ratio));
       canvas.height = Math.max(1, Math.round(height * ratio));

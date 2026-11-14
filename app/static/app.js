@@ -16,6 +16,7 @@ const isDeadline = e => e.title.startsWith('⏰');
 const flagText = e => e.title.replace('⏰ 截止：', t('截止') + ' ');
 
 const S = {view: 'day', cal: 'day', date: TODAY(), inbox: 0};
+const TOUCH_ = matchMedia('(hover:none),(pointer:coarse)').matches;
 S.view = S.cal = QS.get('view') && ['day', 'week', 'month'].includes(QS.get('view')) ? QS.get('view') : 'day';   // 每次打開都從「日」開始
 if (['day', 'week', 'month'].includes(QS.get('view'))) S.view = S.cal = QS.get('view');
 else if (['tasks', 'inbox', 'alarms', 'weekly', 'link', 'activity'].includes(QS.get('view'))) S.view = QS.get('view');
@@ -25,7 +26,24 @@ const NATIVE = !!window.AsaNative;
 let syncT = 0;
 function nativeSync() { if (NATIVE) { clearTimeout(syncT); syncT = setTimeout(() => { try { AsaNative.sync(); } catch { /* 舊版 App */ } }, 400); } }
 window.onNativeSync = () => { if (S.view === 'alarms' || S.view === 'link') render(); };   // App 同步完會呼叫
+const CACHE = new Map();
+let fresh = null;                                   // render() 期間：背景在抓的最新資料
 async function api(path, method = 'GET', body) {
+  if (method === 'GET' && fresh && CACHE.has(path)) {
+    fresh.push(getFresh(path));
+    return structuredClone(CACHE.get(path));
+  }
+  if (method === 'GET') return structuredClone((await getFresh(path)).v);
+  if (method !== 'GET') CACHE.clear();              // 改了東西：舊的快取都不能用了
+  return apiRaw(path, method, body);
+}
+async function getFresh(path) {
+  const v = await apiRaw(path, 'GET');
+  const old = CACHE.get(path);
+  CACHE.set(path, v);
+  return {path, changed: !old || JSON.stringify(old) !== JSON.stringify(v), v};
+}
+async function apiRaw(path, method = 'GET', body) {
   const r = await fetch('/api' + path, {method, headers: {'X-Lang': LANG, ...(body ? {'Content-Type': 'application/json'} : {})}, body: body ? JSON.stringify(body) : undefined});
   if (!r.ok) {
     let m = await r.text(); try { m = JSON.parse(m).detail || m; } catch { /* 不是 JSON 就照原樣 */ }
@@ -146,7 +164,7 @@ function go(v, d) {
   S.view = v; if (isCal(v)) { S.cal = v; store.set('cal3', v); }
   if (d) S.date = d; S.enter = true; window.scrollTo(0, 0);
   if (palPref() === 'random') S.rnd = randomPal();          // 隨機模式：每換一頁換一個顏色
-  return document.startViewTransition && !document.hidden ? document.startViewTransition(() => render()).updateCallbackDone : render();
+  return document.startViewTransition && !document.hidden && !TOUCH_ ? document.startViewTransition(() => render()).updateCallbackDone : render();
 }
 /* 日曆共用：前後移動、回今天、日／週／月切換 */
 const addMonth = (s, n) => { const d = new Date(s.slice(0, 8) + '01T12:00'); d.setMonth(d.getMonth() + n); return iso(d); };
@@ -155,12 +173,21 @@ const seg = () => `<div class="seg">${CAL.map(([k, v]) => `<button class="${S.vi
 const calbar = (title, extra = '') => `<div class="calbar"><button class="hb" onclick="step(-1)" aria-label="${t('往前')}">‹</button><button class="hb" onclick="step(1)" aria-label="${t('往後')}">›</button>
   <button class="hb" onclick="go(S.view,TODAY())">${t('今天')}</button>${title ? `<b class="ttl num">${title}</b>` : ''}<span class="sp"></span>${extra}${seg()}</div>`;
 
-async function render() {
-  const y = window.scrollY;
-  const html = await VIEW[S.view]();
-  S.inbox = (await api('/inbox')).length;
+let rendering = 0;
+async function render(quiet) {
+  const y = window.scrollY, my = ++rendering;
+  fresh = quiet ? null : [];
+  const pend = fresh;
+  const [html, inbox, unread] = await Promise.all([VIEW[S.view](), api('/inbox'), P.multi && S.view !== 'activity' ? api('/activity/unread') : {n: 0}]);
+  fresh = null;
+  if (my !== rendering) return;                     // 使用者已經切到別頁了
+  S.inbox = inbox.length;
   const ab = $('#actbtn'); ab.hidden = !P.multi;
-  if (P.multi) { const u = S.view === 'activity' ? 0 : (await api('/activity/unread')).n; ab.querySelector('.dot').hidden = !u; ab.querySelector('.dot').textContent = u; ab.classList.toggle('on', S.view === 'activity'); }
+  if (P.multi) { const u = unread.n; ab.querySelector('.dot').hidden = !u; ab.querySelector('.dot').textContent = u; ab.classList.toggle('on', S.view === 'activity'); }
+  if (pend && pend.length) Promise.all(pend).then(rs => {
+    const busy = document.activeElement?.closest?.('#view input,#view textarea') || document.querySelector('.ask');   // 正在打字或開著視窗：不要重畫
+    if (my === rendering && !busy && rs.some(r => r.changed)) render(true);
+  }).catch(() => {});
   drawRail();
   document.body.classList.toggle('bare', bare());
   if (!bare()) $('#mtitle').innerHTML = '';
@@ -289,7 +316,8 @@ function setPal() {
   ['--a1', '--a2', '--a3'].forEach((k, i) => root.style.setProperty(k, c.a[i]));
   setBorderGlowPalette(c.a, c.glow, 0.9);
   if (styleNow() === 'simple') return;
-  if (!aurora) aurora = createAurora($('#aurora'), {stops: c.stops, amplitude: 1.15, blend: 0.6, height: 0.5, glow: 0.75, layers: 3, speed: 0.9, brightness: 0.9, opacity: 0.85});
+  if (!aurora) aurora = createAurora($('#aurora'), {stops: c.stops, amplitude: 1.15, blend: 0.6, height: 0.5, glow: 0.75, layers: 3, speed: 0.9, brightness: 0.9, opacity: 0.85,
+    ...(TOUCH_ ? {still: true, maxRatio: 0.6} : {})});
   else aurora.set({stops: c.stops});
 }
 function decorate() {

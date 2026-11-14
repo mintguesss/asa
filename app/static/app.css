@@ -958,3 +958,8 @@ input.tp{cursor:pointer;caret-color:transparent}
 
 .cmd kbd{right:50px}
 .cmd input,.cmd input:not(#x){padding-right:52px!important}
+
+/* 換頁動畫：短一點、不用模糊濾鏡，錯開的延遲也縮短（原本一張張浮上來要一秒多） */
+.enter .card,.enter .col,.enter .tcard,.enter .hero>*,.enter .rule,.enter .wrow,.enter .q{animation:rise2 .26s ease-out both;animation-delay:min(calc(var(--i,0)*30ms),150ms)}
+.enter .mc{animation:none}
+@keyframes rise2{from{opacity:0;transform:translateY(8px)}}
