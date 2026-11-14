@@ -380,6 +380,24 @@ def add_event(body: dict = Body(...)):
     return {"id": id_}
 
 
+@app.patch("/api/events/{id_}")
+def edit_event(id_: int, body: dict = Body(...), owner: int | None = None):
+    data = pick(body, EVENT_F)
+    if owner and int(owner) != db.me():
+        data.pop("shared", None)                # 別人的共用行程：可以改內容，不能改成不共用
+    elif "shared" in data:
+        data["shared"] = flag(data["shared"])
+    if data.get("title") is not None and not str(data["title"]).strip():
+        raise HTTPException(400, tr("名稱不能是空的"))
+    with owned(owner, "events", id_):
+        if not db.one("SELECT 1 FROM events WHERE id = ?", (id_,)):
+            raise HTTPException(404, tr("找不到這個行程"))
+        if data:
+            db.update("events", id_, data)
+    refresh_tomorrow()
+    return {"ok": True}
+
+
 @app.delete("/api/events/{id_}")
 def del_event(id_: int, owner: int | None = None):
     with owned(owner, "events", id_):

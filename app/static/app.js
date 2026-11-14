@@ -16,7 +16,7 @@ const isDeadline = e => e.title.startsWith('⏰');
 const flagText = e => e.title.replace('⏰ 截止：', t('截止') + ' ');
 
 const S = {view: 'day', cal: 'day', date: TODAY(), inbox: 0};
-S.view = S.cal = ['day', 'week', 'month'].includes(store.get('cal3')) ? store.get('cal3') : 'week';
+S.view = S.cal = QS.get('view') && ['day', 'week', 'month'].includes(QS.get('view')) ? QS.get('view') : 'day';   // 每次打開都從「日」開始
 if (['day', 'week', 'month'].includes(QS.get('view'))) S.view = S.cal = QS.get('view');
 else if (['tasks', 'inbox', 'alarms', 'weekly', 'link', 'activity'].includes(QS.get('view'))) S.view = QS.get('view');
 if (/^\d{4}-\d{2}-\d{2}$/.test(QS.get('date') || '')) S.date = QS.get('date');
@@ -329,15 +329,16 @@ function runway(s) {
   if (P.me.alarm_mode === 'off') return '';
   const al = s.alarms, on = al.filter(a => a.enabled);
   const anchor = s.events.find(e => e.wake && !isDeadline(e) && (!al.length || mins(e.time) > mins(al[0].time)));
-  const addBtn = `<button class="hb" onclick="const v=prompt('${t('加一個鬧鐘（HH:MM）')}','07:00');if(v)act('/alarms/plan','POST',{date:'${s.date}',time:v.padStart(5,'0')})">＋</button>
+  const addBtn = `<button class="hb" aria-label="${t('加一個鬧鐘')}" onclick="pickTime('07:00',{title:'${t('加一個鬧鐘')}'}).then(v=>v&&act('/alarms/plan','POST',{date:'${s.date}',time:v}))">＋</button>
     <button class="hb" onclick="act('/alarms/plan/regenerate?d=${s.date}','POST',null,'${t('已依規則重排')}')">${t('重排')}</button>`;
   if (!al.length) return `<div class="runway"><div class="cap"><span>${t('這天沒有排鬧鐘')}</span><span style="flex:1"></span>${addBtn}</div></div>`;
   const a = mins(al[0].time), last = mins(al[al.length - 1].time);
   const b = anchor ? mins(anchor.time) : last + Math.max(10, (last - a) / 3);
   const pos = x => ((mins(x) - a) / (b - a) * 100).toFixed(2);
-  return `<div class="runway"><div class="cap"><b class="num">${on.length ? on[0].time : '—'}</b>
-      <span class="num">×${on.length}${on.length > 1 ? `　→ ${on[on.length - 1].time}` : ''}</span>
+  return `<div class="runway ${S.rwOpen ? 'open' : ''}"><div class="cap"><b class="num">${on.length ? on[0].time : '—'}</b>
+      <button class="rwx num" onclick="S.rwOpen=!S.rwOpen;this.closest('.runway').classList.toggle('open',S.rwOpen)" aria-label="${t('展開每一個鬧鐘')}">×${on.length}${on.length > 1 ? `　→ ${on[on.length - 1].time}` : ''} <span class="chev">⌄</span></button>
       <span style="flex:1"></span>${addBtn}</div>
+    <div class="rwall">${al.map(x => `<button class="chip num ${x.enabled ? 'on' : 'off'}" title="${t('點一下開關')}" onclick="act('/alarms/plan/${x.id}','PATCH',{enabled:${x.enabled ? 0 : 1}})">${x.time}</button>`).join('')}</div>
     <div class="track">${al.map((x, i) => `<button class="bell ${x.enabled ? '' : 'off'} ${x.source === 'manual' ? 'manual' : ''} ${i === 0 || i === al.length - 1 ? 'edge' : ''}" style="left:${pos(x.time)}%;--i:${i}"
         title="${x.time}（${t('點一下開關')}）" onclick="act('/alarms/plan/${x.id}','PATCH',{enabled:${x.enabled ? 0 : 1}})"><i class="num">${x.time}</i></button>`).join('')}
       ${anchor ? `<div class="goal"><span class="num">${esc(anchor.time)} ${esc(anchor.title)}</span></div>` : ''}</div></div>`;
@@ -444,7 +445,7 @@ VIEW.week_old = async () => {
 /* 月曆（首頁）：格子裡直接寫行程名稱、依種類上色；點一天，下面列出那天的行程 */
 /* 月曆（首頁），參考 TimeTree：格子撐滿整個畫面、行程名稱直接寫在格子裡；
    手機上點一天，從底部拉出那天的面板；右下角「＋」新增 */
-const bare = () => false;
+const bare = () => S.view === 'month' && MOB();
 async function pickDay(d) {
   if (d.slice(0, 7) !== S.date.slice(0, 7)) return go('month', d);
   S.date = d;
@@ -492,7 +493,7 @@ VIEW.month = async () => {
   const [m, s] = await Promise.all([api('/month?d=' + S.date), mob ? null : api('/day?d=' + S.date)]), first = new Date(m.month + '-01T12:00');
   const title = LANG === 'en' ? `${first.toLocaleDateString(LOCALE, {month: 'long'})} <small>${first.getFullYear()}</small>` : `${first.getMonth() + 1} 月 <small>${first.getFullYear()}</small>`;
   // 一格放得下幾條：依畫面高度算（手機約 5 條，桌機 5～6 條）
-  const avail = mob ? innerHeight - 200 - 26 : Math.max(560, innerHeight - 260);
+  const avail = mob ? innerHeight - 150 - 22 : Math.max(560, innerHeight - 230);
   const n = Math.max(2, Math.floor((avail / 6 - 26) / (mob ? 16 : 19)));
   const grid = `<div class="cal" style="--rows:6"><div class="mh">${WD1.map((c, i) => `<span class="${i > 4 ? 'we' : ''}">${c}</span>`).join('')}</div>
     <div class="mg" id="mgrid">${m.days.map(d => { const items = [...d.events.map(label), ...d.due.map(k => `<div class="lb d">${esc(k)}</div>`)];
@@ -562,7 +563,7 @@ async function openEvent(id, owner) {
   }
   const d = e.start.slice(0, 10);
   box.innerHTML = `<div class="askbox sheet" role="dialog" aria-modal="true">
-    <div class="sh-h"><b>${duo(e)}${esc(e.title)}</b><button class="x" onclick="closeSheet()" aria-label="${t('關閉')}">✕</button></div>
+    <div class="sh-h"><b>${duo(e)}${esc(e.title)}</b>${e.mine || e.shared ? `<button class="btn ghost sm" onclick='editEvent(${JSON.stringify({id: e.id, owner: e.owner, mine: e.mine, title: e.title, start: e.start, end: e.end, location: e.location, note: e.note, shared: e.shared}).replace(/'/g, '&#39;')})'>${t('編輯')}</button>` : ''}<button class="x" onclick="closeSheet()" aria-label="${t('關閉')}">✕</button></div>
     <div class="sh-m">${md(d)} ${WDN[wdOf(d)]} · <span class="num">${esc(e.start.slice(11, 16))}${e.end ? '–' + esc(e.end.slice(11, 16)) : ''}</span>${e.location ? ' · ' + esc(e.location) : ''}${P.multi && !e.mine ? ' · ' + esc(e.owner_name) : ''}</div>
     ${e.note ? `<div class="sh-n">${esc(e.note)}</div>` : ''}
     <div class="cmts">${e.comments.map(c => `<div class="cm">${face({name: c.author_name, color: c.author_color, avatar: c.avatar}, 'sm')}<div class="cb">
@@ -712,7 +713,10 @@ function ruleCard(r) {
     <div class="seg sm"><button class="${follow ? 'on' : ''}" onclick="act('/alarms/rules/${r.id}','PATCH',{anchor:'first_event'})">${t('跟著行程')}</button><button class="${follow ? '' : 'on'}" onclick="act('/alarms/rules/${r.id}','PATCH',{anchor:'fixed'})">${t('固定時間')}</button></div>
     <div class="knobs">${follow ? num('提前', 'lead_minutes', r.lead_minutes, '分', 0) : time('開始', 'fixed_time', r.fixed_time || '07:00')}${num('間隔', 'interval_minutes', r.interval_minutes, '分')}${num('數量', 'count', r.count, '個', 1, 30)}
       ${follow ? time('沒行程時', 'fixed_time', r.fixed_time, t('那天沒有行程時從幾點開始響；留空就不排鬧鐘')) : ''}</div>
-    <div class="dots" title="${t('從第一個到最後一個共 {0} 分鐘', span)}">${Array.from({length: n}, (_, i) => (i ? `<s style="width:${gap}px"></s>` : '') + `<i style="--i:${i}"></i>`).join('')}<span class="num">${t('{0} 分鐘', span)}</span></div></div>`;
+    <button class="dots" onclick="this.parentNode.classList.toggle('open')" title="${t('點一下看每一個的時間')}">${Array.from({length: n}, (_, i) => (i ? `<s style="width:${gap}px"></s>` : '') + `<i style="--i:${i}"></i>`).join('')}<span class="num">${t('{0} 分鐘', span)} ⌄</span></button>
+    <div class="dtimes">${Array.from({length: r.count}, (_, i) => follow ? `<span class="chip num">${t('前 {0} 分', r.lead_minutes - i * r.interval_minutes)}</span>`
+      : `<span class="chip num">${hhmm((mins(r.fixed_time || '07:00') + i * r.interval_minutes) % 1440)}</span>`).join('')}
+      ${follow ? `<div class="muted">${t('以行程開始時間往前算；例如 9:00 的課，第一個是 {0}', hhmm((540 - r.lead_minutes + 1440) % 1440))}</div>` : ''}</div></div>`;
 }
 function phoneLine(ph) {
   if (ph.mode !== 'app') return '';
@@ -757,7 +761,7 @@ VIEW.weekly = async () => {
   const days = [0, 1, 2, 3, 4, 5, 6].map(d => w.filter(k => k.weekday === d));
   const form = `<form class="card tadd" onsubmit="event.preventDefault();addWeekly(this)">
       <div class="tadd-top"><input class="field big" type="text" name="title" placeholder="${t('名稱（課、班、健身…）')}" required autocomplete="off"><button class="btn pri">${t('加入')}</button></div>
-      <div class="tadd-opts"><div class="wdpick">${WD1.map((c, i) => `<button type="button" class="${i === today ? 'on' : ''}" onclick="this.classList.toggle('on')" data-d="${i}">${c}</button>`).join('')}</div>
+      <div class="tadd-opts"><div class="wdpick">${WD1.map((c, i) => `<button type="button" onclick="this.classList.toggle('on')" data-d="${i}">${c}</button>`).join('')}</div>
         <span class="trange"><input class="field" type="time" name="start_time" required><span class="muted">–</span><input class="field" type="time" name="end_time"></span>
         <input class="field" type="text" name="location" placeholder="${t('地點')}" style="max-width:140px"></div>
       <div class="muted hint">${t('可以一次選好幾天，例如每週二、四的課。')}</div></form>`;
@@ -815,7 +819,7 @@ VIEW.link = async () => {
       <div class="addrow">${P.local && !p.me ? `<button class="btn" onclick="api('/profiles/${p.id}/switch','POST').then(()=>location.reload())">${t('在這台電腦切換成這個人')}</button>` : ''}
         ${P.admin && p.id !== 1 ? `<button class="btn" onclick="pact('/profiles/${p.id}','DELETE')">${t('移除')}</button>` : ''}</div>`}</details>`;
   };
-  const members = `<div class="card"><h3>${P.multi ? t('成員') : t('提醒與共用')}${P.admin ? ` <span class="r"><button class="btn" onclick="const n=prompt('${t('新成員的名字')}');if(n)pact('/profiles','POST',{name:n},'${t('已新增，把存取碼給對方就能用')}')">＋ ${t('新增成員')}</button></span>` : ''}</h3>
+  const members = `<div class="card"><h3>${P.multi ? t('成員') : t('提醒與共用')}${P.admin ? ` <span class="r"><button class="btn" onclick="askText('${t('新成員的名字')}').then(n=>n&&pact('/profiles','POST',{name:n},'${t('已新增，把存取碼給對方就能用')}'))">＋ ${t('新增成員')}</button></span>` : ''}</h3>
       ${P.multi ? '' : `<div class="muted" style="margin-bottom:6px">${t('跟另一半或家人共用？新增一位成員：每個人有自己的鬧鐘、待辦和通知，行程和待辦可以選擇「一起」。')}</div>`}
       ${P.list.map(member).join('')}</div>`;
   const more = `<div class="card"><h3>${t('進階')}</h3>
@@ -943,4 +947,136 @@ loadP().then(render);
 if (new URLSearchParams(location.search).get('awake')) {
   history.replaceState(null, '', location.pathname);
   api('/wake/awake', 'POST').then(r => { toast(t('早安！{0} 起床', r.at)); render(); }).catch(() => {});
+}
+
+
+/* ---------- 自己畫的時間／日期選擇器、文字輸入框（取代瀏覽器內建的） ---------- */
+function sheetBox(inner, cls = '') {
+  const d = document.createElement('div');
+  d.className = 'ask picker-wrap';
+  d.innerHTML = `<div class="askbox picker ${cls}" role="dialog" aria-modal="true">${inner}</div>`;
+  document.body.append(d);
+  return d;
+}
+function closeBox(d) { d.classList.add('out'); setTimeout(() => d.remove(), 180); }
+const IH = 40;                                                // 滾輪每一格的高度
+function wheel(n, step, cur) {
+  const items = Array.from({length: Math.ceil(n / step)}, (_, i) => i * step);
+  return `<div class="wheel" data-step="${step}"><div class="pad"></div>${items.map(v => `<div class="wi num" data-v="${v}">${String(v).padStart(2, '0')}</div>`).join('')}<div class="pad"></div></div>`;
+}
+function wheelVal(w) { const step = +w.dataset.step; return Math.round(w.scrollTop / IH) * step; }
+function wheelSet(w, v, smooth) { w.scrollTo({top: Math.round(v / +w.dataset.step) * IH, behavior: smooth ? 'smooth' : 'auto'}); }
+function pickTime(cur, {title = '', clear = false} = {}) {
+  return new Promise(done => {
+    const now = new Date(), def = cur && /^\d\d:\d\d/.test(cur) ? cur : hhmm(Math.ceil((now.getHours() * 60 + now.getMinutes()) / 5) * 5 % 1440);
+    const d = sheetBox(`${title ? `<div class="pk-t">${esc(title)}</div>` : ''}
+      <div class="wheels"><div class="band"></div>${wheel(24, 1)}<span class="colon">:</span>${wheel(60, 1)}</div>
+      <div class="pk-q">${['-5', '+5', '+30'].map(q => `<button type="button" class="chip" data-q="${q}">${q} ${t('分')}</button>`).join('')}</div>
+      <div class="askrow">${clear ? `<button class="btn" data-v="clear">${t('清除')}</button>` : ''}<button class="btn" data-v="0">${t('取消')}</button><button class="btn pri" data-v="1">${t('確定')}</button></div>`);
+    const [wh, wm] = d.querySelectorAll('.wheel');
+    requestAnimationFrame(() => { wheelSet(wh, +def.slice(0, 2)); wheelSet(wm, +def.slice(3, 5)); });
+    d.querySelectorAll('.wi').forEach(el => el.onclick = () => wheelSet(el.parentNode, +el.dataset.v, true));
+    const val = () => hhmm(wheelVal(wh) * 60 + wheelVal(wm));
+    const fin = v => { document.removeEventListener('keydown', key); closeBox(d); done(v); };
+    const key = e => { if (e.key === 'Escape') fin(null); if (e.key === 'Enter') fin(val()); };
+    document.addEventListener('keydown', key);
+    d.onclick = e => {
+      if (e.target === d) return fin(null);
+      const q = e.target.closest('[data-q]');
+      if (q) { const m = (mins(val()) + +q.dataset.q + 1440) % 1440; wheelSet(wh, Math.floor(m / 60), true); wheelSet(wm, m % 60, true); return; }
+      const b = e.target.closest('[data-v]'); if (!b) return;
+      fin(b.dataset.v === '1' ? val() : b.dataset.v === 'clear' ? '' : null);
+    };
+  });
+}
+function pickDate(cur, {clear = false} = {}) {
+  return new Promise(done => {
+    let m = (cur || TODAY()).slice(0, 7);
+    const d = sheetBox('', 'datepk');
+    const draw = () => {
+      const first = new Date(m + '-01T12:00'), start = shift(m + '-01', -wdOf(m + '-01'));
+      const days = Array.from({length: 42}, (_, i) => shift(start, i));
+      d.querySelector('.picker').innerHTML = `<div class="pk-m"><button type="button" class="hb" data-n="-1">‹</button>
+          <b>${LANG === 'en' ? first.toLocaleDateString(LOCALE, {month: 'long', year: 'numeric'}) : `${first.getFullYear()} 年 ${first.getMonth() + 1} 月`}</b>
+          <button type="button" class="hb" data-n="1">›</button></div>
+        <div class="pk-g">${WD1.map(c => `<span class="muted">${c}</span>`).join('')}${days.map(x => `<button type="button" class="pd num ${x.slice(0, 7) !== m ? 'out' : ''} ${x === TODAY() ? 'today' : ''} ${x === cur ? 'on' : ''}" data-d="${x}">${+x.slice(8)}</button>`).join('')}</div>
+        <div class="askrow">${clear ? `<button class="btn" data-v="clear">${t('清除')}</button>` : ''}<button class="btn" data-v="today">${t('今天')}</button><button class="btn" data-v="0">${t('取消')}</button></div>`;
+    };
+    const fin = v => { document.removeEventListener('keydown', key); closeBox(d); done(v); };
+    const key = e => { if (e.key === 'Escape') fin(null); };
+    document.addEventListener('keydown', key);
+    d.onclick = e => {
+      if (e.target === d) return fin(null);
+      const n = e.target.closest('[data-n]'); if (n) { m = addMonth(m + '-01', +n.dataset.n).slice(0, 7); return draw(); }
+      const x = e.target.closest('[data-d]'); if (x) return fin(x.dataset.d);
+      const b = e.target.closest('[data-v]'); if (!b) return;
+      fin(b.dataset.v === 'today' ? TODAY() : b.dataset.v === 'clear' ? '' : null);
+    };
+    draw();
+  });
+}
+function askText(msg, def = '', ok = t('確定')) {
+  return new Promise(done => {
+    const d = sheetBox(`<p>${esc(msg)}</p><input class="field big" value="${esc(def)}" maxlength="40" autocomplete="off">
+      <div class="askrow" style="margin-top:14px"><button class="btn" data-v="0">${t('取消')}</button><button class="btn pri" data-v="1">${esc(ok)}</button></div>`);
+    const inp = d.querySelector('input');
+    const fin = v => { closeBox(d); done(v); };
+    inp.onkeydown = e => { if (e.key === 'Enter') fin(inp.value.trim() || null); if (e.key === 'Escape') fin(null); };
+    d.onclick = e => { if (e.target === d) return fin(null); const b = e.target.closest('[data-v]'); if (b) fin(b.dataset.v === '1' ? inp.value.trim() || null : null); };
+    setTimeout(() => inp.focus(), 80);
+  });
+}
+/* 頁面上所有 <input type=time/date> 自動換成點了跳出上面的選擇器 */
+function fixInputs(root) {
+  root.querySelectorAll?.('input[type=time],input[type=date]').forEach(el => {
+    el.dataset.kind = el.type; if (el.required) { el.dataset.req = '1'; el.required = false; }
+    el.type = 'text'; el.readOnly = true; el.inputMode = 'none'; el.classList.add('tp');
+    if (!el.placeholder) el.placeholder = el.dataset.kind === 'time' ? '--:--' : t('選日期');
+  });
+}
+async function openTp(el) {
+  const label = el.closest('label')?.querySelector('span')?.textContent || el.title || '';
+  const v = el.dataset.kind === 'time' ? await pickTime(el.value, {title: label, clear: !el.dataset.req && !!el.value})
+    : await pickDate(el.value, {clear: !el.dataset.req && !!el.value});
+  if (v === null || v === el.value) return;
+  el.value = v;
+  el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true}));
+}
+document.addEventListener('click', e => { const el = e.target.closest?.('input.tp'); if (el) { e.preventDefault(); openTp(el); } });
+document.addEventListener('submit', e => {                      // 必填的時間還沒選：先跳出選擇器，不送出
+  const miss = e.target.querySelector('input.tp[data-req]:not([value]),input.tp[data-req]');
+  const empty = [...e.target.querySelectorAll('input.tp[data-req]')].find(x => !x.value);
+  if (miss && empty) { e.preventDefault(); e.stopImmediatePropagation(); openTp(empty); }
+}, true);
+new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => n.nodeType === 1 && fixInputs(n)))).observe(document.body, {childList: true, subtree: true});
+fixInputs(document.body);
+
+/* ---------- 行程編輯 ---------- */
+function editEvent(e) {
+  const box = document.querySelector('.sheetwrap .sheet'); if (!box) return;
+  const d = e.start.slice(0, 10), q = e.owner && !e.mine ? `?owner=${e.owner}` : '';
+  box.innerHTML = `<div class="sh-h"><b>${t('編輯行程')}</b><button class="x" onclick="closeSheet()" aria-label="${t('關閉')}">✕</button></div>
+    <form class="evadd evedit" onsubmit="event.preventDefault();saveEvent(this,${e.id},'${q}')">
+      <input class="field big" name="title" value="${esc(e.title)}" required autocomplete="off" placeholder="${t('名稱')}">
+      <div class="evrow"><label class="lf"><span>${t('日期')}</span><input class="field" type="date" name="date" value="${d}" required></label></div>
+      <div class="evrow"><label class="lf"><span>${t('開始')}</span><input class="field" type="time" name="time" value="${esc(e.start.slice(11, 16))}" required></label>
+        <label class="lf"><span>${t('結束')}</span><input class="field" type="time" name="end" value="${esc((e.end || '').slice(11, 16))}"></label></div>
+      <input class="field" name="location" value="${esc(e.location || '')}" placeholder="${t('地點')}">
+      <textarea class="field" name="note" rows="3" placeholder="${t('備註')}">${esc(e.note || '')}</textarea>
+      ${P.multi && e.mine ? `<label class="share"><input type="checkbox" name="shared" ${e.shared ? 'checked' : ''}> ${t('一起')}</label>` : ''}
+      <div class="askrow"><button type="button" class="btn danger" onclick="delEvent(${e.id},'${q}')">${t('刪除')}</button>
+        <button type="button" class="btn" onclick="openEvent(${e.id},${e.mine ? 'null' : e.owner})">${t('取消')}</button><button class="btn pri">${t('儲存')}</button></div></form>`;
+  fixInputs(box);
+}
+async function saveEvent(f, id, q) {
+  const v = Object.fromEntries(new FormData(f));
+  if (!v.title.trim() || !v.time) return;
+  const body = {title: v.title.trim(), start: v.date + 'T' + v.time, end: v.end ? v.date + 'T' + v.end : null, location: v.location || '', note: v.note || ''};
+  if (f.shared) body.shared = f.shared.checked ? 1 : 0;
+  await api(`/events/${id}${q}`, 'PATCH', body);
+  toast(t('已儲存')); closeSheet();
+}
+async function delEvent(id, q) {
+  if (!await ask(t('刪除這個行程？'))) return;
+  await api(`/events/${id}${q}`, 'DELETE'); toast(t('已刪除')); closeSheet();
 }

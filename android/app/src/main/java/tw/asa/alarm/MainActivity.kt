@@ -54,7 +54,7 @@ class MainActivity : Activity() {
         with(web.settings) {
             javaScriptEnabled = true
             domStorageEnabled = true
-            userAgentString = "$userAgentString AsaApp/1.2"
+            userAgentString = "$userAgentString AsaApp/1.3"
         }
         CookieManager.getInstance().setAcceptCookie(true)
         web.addJavascriptInterface(Bridge(), "AsaNative")
@@ -167,6 +167,6 @@ class MainActivity : Activity() {
     inner class Bridge {
         @JavascriptInterface fun sync() = syncInBackground()
         @JavascriptInterface fun openSetup() = runOnUiThread { this@MainActivity.openSetup() }
-        @JavascriptInterface fun version(): String = "1.2"
+        @JavascriptInterface fun version(): String = "1.3"
     }
 }
