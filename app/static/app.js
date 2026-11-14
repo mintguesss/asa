@@ -1010,7 +1010,11 @@ function pickTime(cur, {title = '', clear = false} = {}) {
       <div class="pk-q">${['-5', '+5', '+30'].map(q => `<button type="button" class="chip" data-q="${q}">${q} ${t('分')}</button>`).join('')}</div>
       <div class="askrow">${clear ? `<button class="btn" data-v="clear">${t('清除')}</button>` : ''}<button class="btn" data-v="0">${t('取消')}</button><button class="btn pri" data-v="1">${t('確定')}</button></div>`);
     const [wh, wm] = d.querySelectorAll('.wheel');
-    requestAnimationFrame(() => { wheelSet(wh, +def.slice(0, 2)); wheelSet(wm, +def.slice(3, 5)); });
+    // 視窗彈出的動畫期間設定捲動位置可能被吃掉：先設一次，動畫期間再補幾次（使用者動過就不再補）
+    let touched = false;
+    d.addEventListener('pointerdown', () => { touched = true; }); d.addEventListener('wheel', () => { touched = true; }, {passive: true});
+    const init = () => { if (!touched) { wheelSet(wh, +def.slice(0, 2)); wheelSet(wm, +def.slice(3, 5)); } };
+    void wh.offsetHeight; init(); [30, 120, 360].forEach(ms => setTimeout(init, ms));
     d.querySelectorAll('.wi').forEach(el => el.onclick = () => wheelSet(el.parentNode, +el.dataset.v, true));
     const val = () => hhmm(wheelVal(wh) * 60 + wheelVal(wm));
     const fin = v => { document.removeEventListener('keydown', key); closeBox(d); done(v); };

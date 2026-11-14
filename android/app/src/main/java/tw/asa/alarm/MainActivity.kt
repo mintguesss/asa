@@ -38,6 +38,7 @@ class MainActivity : Activity() {
     private lateinit var errText: TextView
     private var fileCb: ValueCallback<Array<Uri>>? = null
     private var loadedFor = ""
+    private var splash: SunriseView? = null
     private var geoAsk: Pair<String, GeolocationPermissions.Callback>? = null
     private var sr: SpeechRecognizer? = null
     private val REQ_GEO = 31
@@ -133,6 +134,7 @@ class MainActivity : Activity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 if (errBox.visibility != View.VISIBLE) web.visibility = View.VISIBLE
+                web.postDelayed({ splash?.hide() }, 150)       // 等網頁畫出第一個畫面
             }
         }
         web.webChromeClient = object : WebChromeClient() {
@@ -173,6 +175,11 @@ class MainActivity : Activity() {
         errBox.visibility = View.GONE
         root.addView(errBox, FrameLayout.LayoutParams(-1, -1))
 
+        // 開啟動畫：太陽升起；網頁載入好就淡出（最多等 4 秒）
+        splash = SunriseView(this)
+        root.addView(splash, FrameLayout.LayoutParams(-1, -1))
+        root.postDelayed({ splash?.hide() }, 4000)
+
         setContentView(root)
         Scheduler.scheduleAll(this)
         Scheduler.scheduleSyncTick(this)
@@ -181,6 +188,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (Store.url(this).isEmpty() || Store.token(this).isEmpty()) {
+            splash?.hide()
             openSetup()             // 第一次打開：先填網址和存取碼
             return
         }
@@ -209,6 +217,7 @@ class MainActivity : Activity() {
     }
 
     private fun showError(msg: String) {
+        splash?.hide()
         web.visibility = View.INVISIBLE
         errText.text = Store.url(this) + "\n" + msg
         errBox.visibility = View.VISIBLE

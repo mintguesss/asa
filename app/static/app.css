@@ -912,7 +912,7 @@ input.tp{cursor:pointer;caret-color:transparent}
 .wheel{width:84px;height:200px;overflow-y:auto;scroll-snap-type:y mandatory;scrollbar-width:none;overscroll-behavior:contain}
 .wheel::-webkit-scrollbar{display:none}
 .wheel .pad{height:80px}
-.wi{height:40px;line-height:40px;text-align:center;font-size:24px;font-weight:600;color:var(--ink);scroll-snap-align:start;cursor:pointer}
+.wi{height:40px;line-height:40px;text-align:center;font-size:24px;font-weight:600;color:var(--ink);scroll-snap-align:center;cursor:pointer}
 .colon{font-size:26px;font-weight:700;color:var(--ink2)}
 .pk-q{display:flex;gap:8px;justify-content:center;margin-bottom:14px}
 .pk-q .chip{cursor:pointer}
