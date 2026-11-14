@@ -963,3 +963,11 @@ input.tp{cursor:pointer;caret-color:transparent}
 .enter .card,.enter .col,.enter .tcard,.enter .hero>*,.enter .rule,.enter .wrow,.enter .q{animation:rise2 .26s ease-out both;animation-delay:min(calc(var(--i,0)*30ms),150ms)}
 .enter .mc{animation:none}
 @keyframes rise2{from{opacity:0;transform:translateY(8px)}}
+
+/* 日／週／月切換也有進場動畫 */
+.enter .cal,.enter .week,.enter .mwrap,.enter .calbar{animation:rise2 .26s ease-out both}
+/* 手機：毛玻璃模糊半徑調小（重算比較省） */
+@media (hover:none),(pointer:coarse){
+  .card,.runway,.dock,.cmd input,.tbtn,.hb,.seg,.arow,.asum{backdrop-filter:blur(10px)!important;-webkit-backdrop-filter:blur(10px)!important}
+}
+.kv .btn.sm{padding:4px 10px;font-size:12.5px;margin-left:6px}

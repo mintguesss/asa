@@ -19,9 +19,17 @@ object Voice {
             pending = text
             tts = TextToSpeech(app) { status ->
                 ready = status == TextToSpeech.SUCCESS
+                if (!ready) {
+                    tts = null
+                    tell(app, tr("手機的文字轉語音沒有開：到「設定 → 協助工具 → 文字轉語音」選一個引擎（例如 Google）", "Text-to-speech is off: pick an engine in Settings → Accessibility → Text-to-speech"))
+                }
                 if (ready) {
                     val zh = Locale.getDefault().language == "zh"
-                    tts?.setLanguage(if (zh) Locale.TAIWAN else Locale.getDefault())
+                    val r = tts?.setLanguage(if (zh) Locale.TAIWAN else Locale.getDefault()) ?: TextToSpeech.LANG_NOT_SUPPORTED
+                    if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        if (zh && (tts?.setLanguage(Locale.CHINESE) ?: -2) < 0)
+                            tell(app, tr("文字轉語音沒有中文語音：到「設定 → 文字轉語音」下載中文", "No voice for this language: download one in Text-to-speech settings"))
+                    }
                     tts?.setAudioAttributes(AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                     pending?.let { say(it) }
@@ -39,6 +47,10 @@ object Voice {
     }
 
     fun stop() { tts?.stop() }
+
+    private fun tell(c: Context, msg: String) = android.os.Handler(android.os.Looper.getMainLooper()).post {
+        android.widget.Toast.makeText(c, msg, android.widget.Toast.LENGTH_LONG).show()
+    }
 
     /** 起床後：向電腦拿今天的簡報，唸出來。拿不到就算了。 */
     fun morningBrief(c: Context) {

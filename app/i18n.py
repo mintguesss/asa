@@ -123,7 +123,7 @@ EN = {
     "👉 打開 Asa 叫他起床：{url}": "👉 Open Asa to wake them: {url}",
     "\n醒了就點：{url}": "\nTap when you're up: {url}",
     "{time} {title}：準備 {lead} 分鐘＋{go}": "{time} {title}: {lead} min to get ready + {go}",
-    "晴": "Sunny", "晴時多雲": "Mostly sunny", "多雲": "Partly cloudy", "陰": "Overcast", "有霧": "Foggy",
+    "目前位置": "Current location", "晴": "Sunny", "晴時多雲": "Mostly sunny", "多雲": "Partly cloudy", "陰": "Overcast", "有霧": "Foggy",
     "毛毛雨": "Drizzle", "有雨": "Rain", "大雨": "Heavy rain", "凍雨": "Freezing rain", "下雪": "Snow", "雷雨": "Thunderstorms",
     "{icon} {where}：{text}，{lo}～{hi}°C": "{icon} {where}: {text}, {lo}–{hi}°C", "（現在 {t}°C）": " (now {t}°C)",
     "，降雨機率 {p}%": ", {p}% chance of rain", "，記得帶傘 ☂️": ", take an umbrella ☂️",

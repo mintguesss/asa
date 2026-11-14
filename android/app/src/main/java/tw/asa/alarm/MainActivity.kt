@@ -9,7 +9,12 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
+import android.Manifest
+import android.content.pm.PackageManager
+import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.webkit.GeolocationPermissions
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
@@ -33,6 +38,59 @@ class MainActivity : Activity() {
     private lateinit var errText: TextView
     private var fileCb: ValueCallback<Array<Uri>>? = null
     private var loadedFor = ""
+    private var geoAsk: Pair<String, GeolocationPermissions.Callback>? = null
+    private var sr: SpeechRecognizer? = null
+    private val REQ_GEO = 31
+    private val REQ_MIC = 32
+
+    private fun js(code: String) = runOnUiThread { web.evaluateJavascript(code, null) }
+    private fun q(s: String) = org.json.JSONObject.quote(s)
+
+    /** 語音輸入：用手機的語音辨識，邊說邊把字送到網頁；說完交給網頁去解析。 */
+    private fun startListen() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_MIC)
+            return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            js("toast(" + q(tr("這支手機沒有語音辨識服務（需要 Google App）", "No speech recognition service on this phone (needs the Google app)")) + ")")
+            return
+        }
+        sr?.destroy()
+        val r = SpeechRecognizer.createSpeechRecognizer(this)
+        sr = r
+        r.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(p: Bundle?) = js("window.onVoiceState && onVoiceState('listening')")
+            override fun onPartialResults(b: Bundle?) {
+                val t = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
+                js("window.onVoicePartial && onVoicePartial(" + q(t) + ")")
+            }
+            override fun onResults(b: Bundle?) {
+                val t = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                js("window.onVoice && onVoice(" + q(t) + ")")
+            }
+            override fun onError(code: Int) = js("window.onVoiceError && onVoiceError($code)")
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(v: Float) {}
+            override fun onBufferReceived(b: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onEvent(t: Int, b: Bundle?) {}
+        })
+        r.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (java.util.Locale.getDefault().language == "zh") "zh-TW" else java.util.Locale.getDefault().toLanguageTag())
+            .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName))
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        val ok = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        if (requestCode == REQ_GEO) { geoAsk?.let { it.second.invoke(it.first, ok, false) }; geoAsk = null }
+        if (requestCode == REQ_MIC) { if (ok) startListen() else js("window.onVoiceError && onVoiceError(9)") }
+    }
+
+    override fun onDestroy() { sr?.destroy(); super.onDestroy() }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,7 +113,7 @@ class MainActivity : Activity() {
         with(web.settings) {
             javaScriptEnabled = true
             domStorageEnabled = true
-            userAgentString = "$userAgentString AsaApp/1.4"
+            userAgentString = "$userAgentString AsaApp/1.5"
         }
         CookieManager.getInstance().setAcceptCookie(true)
         web.addJavascriptInterface(Bridge(), "AsaNative")
@@ -78,6 +136,16 @@ class MainActivity : Activity() {
             }
         }
         web.webChromeClient = object : WebChromeClient() {
+            // 網頁要目前位置（天氣用）：先跟手機要定位權限
+            override fun onGeolocationPermissionsShowPrompt(origin: String, cb: GeolocationPermissions.Callback) {
+                if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    cb.invoke(origin, true, false)
+                } else {
+                    geoAsk = origin to cb
+                    requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION), REQ_GEO)
+                }
+            }
+
             override fun onShowFileChooser(view: WebView, cb: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
                 fileCb?.onReceiveValue(null)
                 fileCb = cb
@@ -177,10 +245,12 @@ class MainActivity : Activity() {
     inner class Bridge {
         @JavascriptInterface fun sync() = syncInBackground()
         @JavascriptInterface fun openSetup() = runOnUiThread { this@MainActivity.openSetup() }
-        @JavascriptInterface fun version(): String = "1.4"
+        @JavascriptInterface fun version(): String = "1.5"
         @JavascriptInterface fun speak(text: String) = Voice.speak(this@MainActivity, text)
         @JavascriptInterface fun stopSpeak() = Voice.stop()
-        @JavascriptInterface fun listen() = runOnUiThread {
+        @JavascriptInterface fun stopListen() = runOnUiThread { sr?.stopListening() }
+        @JavascriptInterface fun listen() = runOnUiThread { startListen() }
+        @JavascriptInterface fun listenDialog() = runOnUiThread {
             val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (java.util.Locale.getDefault().language == "zh") "zh-TW" else java.util.Locale.getDefault().toLanguageTag())

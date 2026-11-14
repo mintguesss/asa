@@ -473,7 +473,7 @@ VIEW.week_old = async () => {
 /* 月曆（首頁）：格子裡直接寫行程名稱、依種類上色；點一天，下面列出那天的行程 */
 /* 月曆（首頁），參考 TimeTree：格子撐滿整個畫面、行程名稱直接寫在格子裡；
    手機上點一天，從底部拉出那天的面板；右下角「＋」新增 */
-const bare = () => S.view === 'month' && MOB();
+const bare = () => false;
 async function pickDay(d) {
   if (d.slice(0, 7) !== S.date.slice(0, 7)) return go('month', d);
   S.date = d;
@@ -521,7 +521,7 @@ VIEW.month = async () => {
   const [m, s] = await Promise.all([api('/month?d=' + S.date), mob ? null : api('/day?d=' + S.date)]), first = new Date(m.month + '-01T12:00');
   const title = LANG === 'en' ? `${first.toLocaleDateString(LOCALE, {month: 'long'})} <small>${first.getFullYear()}</small>` : `${first.getMonth() + 1} 月 <small>${first.getFullYear()}</small>`;
   // 一格放得下幾條：依畫面高度算（手機約 5 條，桌機 5～6 條）
-  const avail = mob ? innerHeight - 150 - 22 : Math.max(560, innerHeight - 230);
+  const avail = mob ? innerHeight - 210 - 22 : Math.max(560, innerHeight - 230);
   const n = Math.max(2, Math.floor((avail / 6 - 26) / (mob ? 16 : 19)));
   const grid = `<div class="cal" style="--rows:6"><div class="mh">${WD1.map((c, i) => `<span class="${i > 4 ? 'we' : ''}">${c}</span>`).join('')}</div>
     <div class="mg" id="mgrid">${m.days.map(d => { const items = [...d.events.map(label), ...d.due.map(k => `<div class="lb d">${esc(k)}</div>`)];
@@ -1088,7 +1088,7 @@ async function delEvent(id, q) {
 const plain = s => s.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE0F}\u{2300}-\u{23FF}☐]/gu, '').replace(/｜/g, '，').replace(/～/g, '到');
 function speak(text) {
   const s = plain(text);
-  if (NATIVE && AsaNative.speak) return AsaNative.speak(s);
+  if (NATIVE) return AsaNative.speak ? AsaNative.speak(s) : toast(t('請更新 Asa App 才能朗讀'));
   if (!window.speechSynthesis) return toast(t('這個瀏覽器不能朗讀'));
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(s); u.lang = LANG === 'en' ? 'en-US' : 'zh-TW'; u.rate = 1.05;
@@ -1108,8 +1108,15 @@ async function showBrief(kind = 'morning', autoSpeak = false) {
   if (autoSpeak) speak(r.text);
 }
 /* 🎤：App 裡用手機的語音辨識，瀏覽器裡用 Web Speech（Chrome 支援） */
+let listening = false;
+window.onVoiceState = st => { listening = st === 'listening'; $('#mic').classList.toggle('on', listening); if (listening) { $('#cmd').value = ''; $('#cmd').placeholder = t('請說…'); } else setPlaceholder(); };
+window.onVoicePartial = text => { $('#cmd').value = text; };
+window.onVoiceError = code => {
+  window.onVoiceState('idle'); $('#cmd').value = '';
+  toast({6: t('沒聽到聲音，再按一次說說看'), 7: t('沒聽清楚，再說一次'), 9: t('需要麥克風權限：請在手機設定允許 Asa 使用麥克風'), 2: t('語音辨識需要網路'), 1: t('語音辨識需要網路')}[code] || t('語音辨識失敗（{0}）', code));
+};
 function listen() {
-  if (NATIVE && AsaNative.listen) return AsaNative.listen();
+  if (NATIVE && AsaNative.listen) { if (listening && AsaNative.stopListen) return AsaNative.stopListen(); return AsaNative.listen(); }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return toast(t('這個瀏覽器不支援語音輸入，可以用鍵盤上的麥克風'));
   const r = new SR(); r.lang = LANG === 'en' ? 'en-US' : 'zh-TW'; r.interimResults = false;
@@ -1120,7 +1127,7 @@ function listen() {
   r.start();
 }
 window.onVoice = async text => {
-  $('#mic')?.classList.remove('on');
+  window.onVoiceState('idle'); $('#cmd').value = '';
   text = (text || '').trim(); if (!text) return toast(t('沒聽清楚，再說一次'));
   const p = await api('/quick', 'POST', {text, dry: true});
   if (p.type === 'error') { $('#cmd').value = text; $('#cmd').focus(); return toast(t('聽到「{0}」，但看不懂：', text) + p.summary); }
@@ -1129,12 +1136,26 @@ window.onVoice = async text => {
 };
 $('#mic').onclick = listen;
 if (QS.get('brief')) { history.replaceState(null, '', location.pathname); setTimeout(() => showBrief('morning', false), 600); }
+/* 目前位置：有權限就自動抓（三小時最多一次），天氣跟著位置走 */
+function locate(force) {
+  if (!navigator.geolocation) return Promise.resolve(false);
+  let last = 0; try { last = +localStorage.getItem('geo_ts') || 0; } catch { /* 無痕模式 */ }
+  if (!force && Date.now() - last < 3 * 3600e3) return Promise.resolve(true);
+  return new Promise(done => navigator.geolocation.getCurrentPosition(async pos => {
+    try { localStorage.setItem('geo_ts', String(Date.now())); } catch { /* 無痕模式 */ }
+    try { await api('/place', 'PATCH', {lat: pos.coords.latitude, lon: pos.coords.longitude}); } catch { return done(false); }
+    done(true);
+  }, err => { if (force) toast(err.code === 1 ? t('沒有位置權限：請在手機設定允許 Asa 使用位置') : t('抓不到目前位置，等一下再試')); done(false); },
+  {enableHighAccuracy: false, timeout: 15000, maximumAge: 30 * 60e3}));
+}
+setTimeout(() => locate(false), 1500);
 function placeCard(pl) {
   const w = pl.weather;
+  const ago = pl.ts ? Math.round((Date.now() / 1000 - pl.ts) / 60) : null;
   return `<div class="card"><h3>${t('個人助理')}</h3>
     <div class="muted">${t('起床按「我醒了」之後，App 會唸今天的天氣、行程和待辦給你聽；早上的推播簡報也會附上天氣。')}</div>
-    <dl class="kv"><dt>${t('所在地')}</dt><dd><form class="addrow" style="margin:0" onsubmit="event.preventDefault();api('/place','PATCH',{name:this.n.value}).then(()=>{toast(t('已儲存'));render()})">
-      <input class="field" name="n" value="${esc(pl.name)}" placeholder="${t('例：桃園市中壢區')}" style="max-width:200px"><button class="btn">${t('儲存')}</button></form></dd>
+    <dl class="kv"><dt>${t('位置')}</dt><dd>${pl.name ? `📍 ${esc(pl.name)}${ago != null ? ` <span class="muted">· ${ago < 60 ? t('{0} 分鐘前', ago) : t('{0} 小時前', Math.round(ago / 60))}</span>` : ''}` : `<span class="muted">${t('還沒抓到位置')}</span>`}
+        <button class="btn ghost sm" onclick="locate(true).then(ok=>{if(ok){toast(t('已更新位置'));render()}})">${t('重新定位')}</button></dd>
       ${w ? `<dt>${t('今天')}</dt><dd>${w.icon} ${esc(w.text)} ${w.lo}～${w.hi}°C${w.rain != null ? ' · ☔ ' + w.rain + '%' : ''}</dd>` : ''}</dl>
     <div class="addrow"><button class="btn" onclick="showBrief('morning')">☀️ ${t('看早安簡報')}</button><button class="btn ghost" onclick="showBrief('evening')">🌙 ${t('看明日預告')}</button></div></div>`;
 }

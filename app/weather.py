@@ -36,6 +36,34 @@ def geocode(q: str) -> tuple[float, float] | None:
     return (float(js[0]["lat"]), float(js[0]["lon"])) if js else None
 
 
+def reverse(lat: float, lon: float) -> str:
+    """座標 → 地名（到區／鄉鎮）。查不到就回傳空字串。"""
+    try:
+        r = httpx.get("https://nominatim.openstreetmap.org/reverse", headers=UA, timeout=8,
+                      params={"lat": lat, "lon": lon, "format": "json", "zoom": 14, "accept-language": "zh-TW,en"})
+        a = (r.json() if r.status_code == 200 else {}).get("address", {})
+    except Exception:  # noqa: BLE001
+        return ""
+    city = a.get("city") or a.get("county") or a.get("state") or ""
+    area = a.get("suburb") or a.get("city_district") or a.get("town") or a.get("village") or ""
+    return (city + area) if city != area else city
+
+
+def set_geo(lat: float, lon: float) -> dict:
+    """手機回報目前位置。移動不到 2 公里就不重查地名。"""
+    lat, lon = round(float(lat), 3), round(float(lon), 3)
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise ValueError("geo")
+    old = place()
+    if old.get("auto") and old.get("geo") and abs(old["geo"][0] - lat) < 0.02 and abs(old["geo"][1] - lon) < 0.02 and old.get("name"):
+        p = old | {"ts": time.time()}
+    else:
+        p = {"name": ("" if OFFLINE else reverse(lat, lon)) or tr("目前位置"), "geo": [lat, lon], "ts": time.time(), "auto": 1}
+        db.run("DELETE FROM kv WHERE key LIKE 'wx:%'")
+    db.kv_set("place", json.dumps(p, ensure_ascii=False))
+    return p
+
+
 def set_place(name: str) -> dict:
     """設定所在地；查不到座標就丟 ValueError。空字串 = 清掉。"""
     name = name.strip()[:80]

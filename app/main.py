@@ -749,18 +749,20 @@ def wake_nudge(pid: int):
 @app.get("/api/place")
 def get_place():
     p = weather.place()
-    return {"name": p.get("name", ""), "weather": weather.forecast(today()) if p else None}
+    return {"name": p.get("name", ""), "auto": bool(p.get("auto")), "ts": p.get("ts"),
+            "weather": weather.forecast(today()) if p else None}
 
 
 @app.patch("/api/place")
 def edit_place(body: dict = Body(...)):
     try:
-        p = weather.set_place(str(body.get("name", "")))
+        p = weather.set_geo(body["lat"], body["lon"]) if "lat" in body else weather.set_place(str(body.get("name", "")))
     except ValueError:
         raise HTTPException(404, tr("地圖上找不到這個地方，換個寫法試試（例如「桃園市中壢區」）")) from None
     except Exception:  # noqa: BLE001
         raise HTTPException(502, tr("查不到座標：連不上地圖服務，等一下再試")) from None
-    return {"name": p.get("name", ""), "weather": weather.forecast(today()) if p else None}
+    return {"name": p.get("name", ""), "auto": bool(p.get("auto")), "ts": p.get("ts"),
+            "weather": weather.forecast(today()) if p else None}
 
 
 # ---------- 快速輸入 ----------
