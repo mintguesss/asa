@@ -68,8 +68,8 @@ class AlarmActivity : Activity() {
         root.addView(spacer)
 
         // 「我醒了」要先答對算術，避免半夢半醒按掉
-        val a = Random.nextInt(12, 60)
-        val b = Random.nextInt(12, 40)
+        val a = Random.nextInt(100, 1000)        // 三位數加三位數
+        val b = Random.nextInt(100, 1000)
         root.addView(Ui.center(Ui.text(this, tr("答對才算醒：$a + $b = ?", "Solve it to prove you're awake: $a + $b = ?"), 17f)))
         val answer = EditText(this)
         answer.inputType = InputType.TYPE_CLASS_NUMBER

@@ -29,17 +29,23 @@ function nativeSync() { if (NATIVE) { clearTimeout(syncT); syncT = setTimeout(()
 window.onNativeSync = () => { if (S.view === 'alarms' || S.view === 'link') render(); };   // App 同步完會呼叫
 const CACHE = new Map();
 let fresh = null;                                   // render() 期間：背景在抓的最新資料
+let GEN = 0;                                        // 每改一次東西就 +1：改之前送出的讀取，回來的是舊資料
 async function api(path, method = 'GET', body) {
   if (method === 'GET' && fresh && CACHE.has(path)) {
     fresh.push(getFresh(path));
     return structuredClone(CACHE.get(path));
   }
   if (method === 'GET') return structuredClone((await getFresh(path)).v);
-  if (method !== 'GET') { CACHE.clear(); S.full = true; }   // 改了東西：舊的快取都不能用了
-  return apiRaw(path, method, body);
+  GEN++; CACHE.clear(); S.full = true;              // 改了東西：舊的快取都不能用了
+  try { return await apiRaw(path, method, body); } finally { GEN++; CACHE.clear(); }
 }
 async function getFresh(path) {
-  const v = await apiRaw(path, 'GET');
+  let v;
+  for (let i = 0; i < 4; i++) {                     // 讀取途中有人改了資料：這份是舊的，丟掉重抓（不然剛關的鬧鐘會跳回去）
+    const g = GEN;
+    v = await apiRaw(path, 'GET');
+    if (g === GEN) break;
+  }
   const old = CACHE.get(path);
   CACHE.set(path, v);
   return {path, changed: !old || JSON.stringify(old) !== JSON.stringify(v), v};
