@@ -10,6 +10,7 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
         if (intent.action == Scheduler.ACTION_FIRE) {
+            if (intent.getBooleanExtra("check", false) && AlarmService.current != null) return   // 正在響別的鬧鐘：不用確認
             val service = Intent(app, AlarmService::class.java)
             intent.extras?.let { service.putExtras(it) }
             app.startForegroundService(service)

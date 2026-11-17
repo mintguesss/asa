@@ -79,6 +79,20 @@ class SetupActivity : Activity() {
         ring.addView(Ui.button(this, tr("改回預設鈴聲", "Use the default sound"), false) {
             Store.setSound(this, "", ""); showSound()
         })
+        ring.addView(Ui.text(this, tr("背景圖", "Background"), 13f, Ui.MUTE, true).also { it.setPadding(0, Ui.dp(this, 18), 0, 0) })
+        bgLabel = Ui.text(this, "", 16f)
+        bgLabel.setPadding(0, Ui.dp(this, 8), 0, 0)
+        ring.addView(bgLabel)
+        ring.addView(Ui.button(this, tr("選手機裡的照片", "Pick a photo on this phone"), true) {
+            pick(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"), REQ_BG)
+        })
+        ring.addView(Ui.button(this, tr("改回預設漸層", "Use the default gradient"), false) {
+            Store.setBackground(this, ""); showSound()
+        })
+        ring.addView(Ui.button(this, tr("試試起床確認（10 秒後）", "Try the wake check (in 10 seconds)"), false) {
+            Scheduler.scheduleCheck(this, 10)
+            Toast.makeText(this, tr("等一下會震動問你還醒著嗎；1 分鐘內沒按就會大聲響", "It'll vibrate and ask if you're awake; ignore it for a minute and it rings loudly"), Toast.LENGTH_LONG).show()
+        })
         root.addView(ring)
         showSound()
 
@@ -114,10 +128,13 @@ class SetupActivity : Activity() {
     }
 
     private lateinit var soundLabel: android.widget.TextView
+    private lateinit var bgLabel: android.widget.TextView
     private val REQ_SOUND = 41
+    private val REQ_BG = 42
 
     private fun showSound() {
         soundLabel.text = if (Store.sound(this).isEmpty()) tr("系統預設鬧鐘鈴聲", "System default alarm sound") else "🎵 " + Store.soundName(this)
+        bgLabel.text = if (Store.background(this).isEmpty()) tr("預設漸層", "Default gradient") else tr("🖼 已選照片", "🖼 Photo selected")
     }
 
     private fun pick(intent: Intent, req: Int) {
@@ -130,8 +147,13 @@ class SetupActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         val uri = data?.data
-        if (requestCode != REQ_SOUND || resultCode != RESULT_OK || uri == null) return
+        if ((requestCode != REQ_SOUND && requestCode != REQ_BG) || resultCode != RESULT_OK || uri == null) return
         try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
+        if (requestCode == REQ_BG) {
+            Store.setBackground(this, uri.toString()); showSound()
+            Toast.makeText(this, tr("設好了！按「10 秒後響一個測試鬧鐘」看看", "Done! Ring a test alarm to see it"), Toast.LENGTH_LONG).show()
+            return
+        }
         var name = uri.lastPathSegment ?: tr("自選音樂", "Custom music")
         try {
             contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {

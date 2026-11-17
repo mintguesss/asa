@@ -26,6 +26,9 @@ class AlarmService : Service() {
         private const val CHANNEL = "alarm"
         private const val RING_LIMIT = 4 * 60 * 1000L   // 沒人理就 4 分鐘後自己停，等下一個鬧鐘
         @Volatile var current: AlarmItem? = null
+        @Volatile var checking = false               // 起床確認：還沒大聲響，只是在問「還醒著嗎？」
+        @Volatile var isTest = false
+        private const val CHECK_WAIT = 60 * 1000L    // 起床確認 1 分鐘內沒按就大聲響
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -42,6 +45,13 @@ class AlarmService : Service() {
         }
     }
     private val timeout = Runnable { stopSelf() }
+    private val escalate = Runnable {                // 起床確認沒人按：睡回去了，變成一般鬧鐘、一開始就大聲
+        checking = false
+        Store.addRing(this)
+        startRinging(true)
+        handler.removeCallbacks(timeout)
+        handler.postDelayed(timeout, RING_LIMIT)
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -51,8 +61,12 @@ class AlarmService : Service() {
             intent?.getStringExtra("time") ?: "",
             intent?.getStringExtra("label") ?: tr("起床", "Wake up")
         )
+        val check = intent?.getBooleanExtra("check", false) ?: false
+        if (check && current != null) return START_NOT_STICKY      // 正在響別的鬧鐘：不用確認
         current = item
         val isTest = intent?.getBooleanExtra("test", false) ?: false
+        AlarmService.isTest = isTest
+        checking = check
         val loud = intent?.getBooleanExtra("loud", false) ?: false     // 被別人叫：一開始就大聲
         if (loud) volume = 1f
 
@@ -72,7 +86,7 @@ class AlarmService : Service() {
         val notification = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_bell)
             .setContentTitle(item.time + "  " + item.label)
-            .setContentText(tr("點一下關閉鬧鐘", "Tap to dismiss"))
+            .setContentText(if (check) tr("還醒著嗎？點一下", "Still awake? Tap here") else tr("點一下關閉鬧鐘", "Tap to dismiss"))
             .setCategory(Notification.CATEGORY_ALARM)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOngoing(true)
@@ -85,20 +99,35 @@ class AlarmService : Service() {
             startForeground(1, notification)
         }
 
-        if (player == null) startRinging(loud)
+        if (check) {                                 // 起床確認：先輕輕震動，1 分鐘後才響
+            holdWake()
+            try {
+                @Suppress("DEPRECATION")
+                (getSystemService(Context.VIBRATOR_SERVICE) as Vibrator).vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 1700), 0))
+            } catch (_: Exception) { }
+            handler.removeCallbacks(escalate)
+            handler.postDelayed(escalate, CHECK_WAIT)
+        } else if (player == null) startRinging(loud)
         handler.removeCallbacks(timeout)
         handler.postDelayed(timeout, RING_LIMIT)
         try { startActivity(open) } catch (_: Exception) { }   // 螢幕亮著時直接開；被系統擋下也有全螢幕通知
-        if (!isTest && !loud) {
+        if (!isTest && !loud && !check) {
+            Store.addRing(this)                      // 今天第幾個：越晚題目越難
             Api.log(this, "fired", item)
             Scheduler.startNudgeWatch(this)
         }
         return START_NOT_STICKY
     }
 
-    private fun startRinging(loud: Boolean = false) {
+    private fun holdWake() {
+        if (wakeLock?.isHeld == true) return
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "asa:alarm").apply { acquire(RING_LIMIT + 10_000L) }
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "asa:alarm").apply { acquire(CHECK_WAIT + RING_LIMIT + 10_000L) }
+    }
+
+    private fun startRinging(loud: Boolean = false) {
+        holdWake()
+        if (loud) volume = 1f
 
         // 鬧鐘音量太小就先拉到六成，響完再調回去
         try {
@@ -163,6 +192,8 @@ class AlarmService : Service() {
         }
         try { if (wakeLock?.isHeld == true) wakeLock?.release() } catch (_: Exception) { }
         current = null
+        checking = false
+        isTest = false
         super.onDestroy()
     }
 }

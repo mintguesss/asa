@@ -63,6 +63,19 @@ object Store {
     fun soundName(c: Context): String = p(c).getString("soundName", "") ?: ""
     fun setSound(c: Context, uri: String, name: String) { p(c).edit().putString("sound", uri).putString("soundName", name).apply() }
 
+    /** 鬧鐘背景圖：使用者從手機裡選的照片（空 = 原本的漸層）。 */
+    fun background(c: Context): String = p(c).getString("bg", "") ?: ""
+    fun setBackground(c: Context, uri: String) { p(c).edit().putString("bg", uri).apply() }
+
+    /** 今天響過幾個鬧鐘（越晚題目越難）。 */
+    fun ringsToday(c: Context): Int {
+        val v = p(c).getString("rings", "") ?: ""
+        return if (v.startsWith(java.time.LocalDate.now().toString() + ":")) v.substringAfter(":").toIntOrNull() ?: 0 else 0
+    }
+    fun addRing(c: Context) {
+        p(c).edit().putString("rings", java.time.LocalDate.now().toString() + ":" + (ringsToday(c) + 1)).apply()
+    }
+
     fun nudgeUntil(c: Context): Long = p(c).getLong("nudgeUntil", 0L)
     fun setNudgeUntil(c: Context, t: Long) { p(c).edit().putLong("nudgeUntil", t).apply() }
 }
@@ -227,6 +240,18 @@ object Scheduler {
                 null
             } else js.optJSONObject("nudge")?.optString("from")
         } catch (_: Exception) { null }
+    }
+
+    /** 起床確認：按「我醒了」5 分鐘後問一次還醒著嗎（再按一次「我醒了」會重新算 5 分鐘）。 */
+    fun scheduleCheck(c: Context, seconds: Int = 5 * 60) {
+        val now = LocalDateTime.now().plusSeconds(seconds.toLong())
+        val i = Intent(c, AlarmReceiver::class.java)
+            .setAction(ACTION_FIRE)
+            .setData(Uri.parse("asa://check"))
+            .putExtra("date", now.toLocalDate().toString()).putExtra("time", now.format(DateTimeFormatter.ofPattern("HH:mm")))
+            .putExtra("label", tr("起床確認", "Wake check"))
+            .putExtra("check", true)
+        setExact(c, System.currentTimeMillis() + seconds * 1000L, PendingIntent.getBroadcast(c, 0, i, FLAGS))
     }
 
     /** 幾秒後響一個測試鬧鐘。 */
