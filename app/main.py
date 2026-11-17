@@ -115,8 +115,6 @@ def job_minute() -> None:
             for i, a in enumerate(on):
                 if a["time"] == hm_now:
                     nxt = next((e for e in core.events_on(today()) if e["wake"] and e["time"] > hm_now), None)
-                    if wake.awake_at(today()):
-                        break                   # 已經在網頁上按過「我醒了」
                     link = server_urls()[:1]
                     notify.send(tr("⏰ 起床！（第 {i}／{n} 個）", i=i + 1, n=len(on))
                                 + (tr("\n{time} {title}", time=nxt["time"], title=nxt["title"]) if nxt else "")

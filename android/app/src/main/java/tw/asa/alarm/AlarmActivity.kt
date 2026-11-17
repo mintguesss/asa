@@ -82,12 +82,13 @@ class AlarmActivity : Activity() {
         answer.layoutParams = alp
         root.addView(answer)
 
-        root.addView(Ui.button(this, tr("我醒了（取消後面的鬧鐘）", "I'm awake (cancel the rest)"), true) {
+        // 只停掉這一個；後面排好的鬧鐘照樣會響（避免按掉之後又睡回去）
+        root.addView(Ui.button(this, tr("我醒了", "I'm awake"), true) {
             if (answer.text.toString().trim() == (a + b).toString()) {
-                val n = Scheduler.markAwake(this)
+                Scheduler.markAwake(this)
                 Api.log(this, "awake", item)
                 stopService(Intent(this, AlarmService::class.java))
-                Toast.makeText(this, tr("早安！已取消後面 $n 個鬧鐘", "Good morning! Cancelled $n remaining alarms"), Toast.LENGTH_LONG).show()
+                Toast.makeText(this, if (rest.isEmpty()) tr("早安！", "Good morning!") else tr("早安！後面還有 ${rest.size} 個鬧鐘會響", "Good morning! ${rest.size} more alarms will still ring"), Toast.LENGTH_LONG).show()
                 Voice.morningBrief(this)            // 唸今天的天氣、行程、待辦
                 try {
                     startActivity(Intent(this, MainActivity::class.java).putExtra("brief", true)
@@ -98,11 +99,6 @@ class AlarmActivity : Activity() {
                 answer.setText("")
                 Toast.makeText(this, tr("答錯了，再算一次", "Wrong answer, try again"), Toast.LENGTH_SHORT).show()
             }
-        })
-        root.addView(Ui.button(this, tr("只關掉這一個", "Dismiss this one only"), false) {
-            Api.log(this, "dismissed", item)
-            stopService(Intent(this, AlarmService::class.java))
-            finish()
         })
         setContentView(root)
     }

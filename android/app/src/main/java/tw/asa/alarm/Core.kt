@@ -58,6 +58,11 @@ object Store {
     fun setSkipped(c: Context, keys: Set<String>) { p(c).edit().putStringSet("skipped", HashSet(keys)).apply() }
 
     /** 起床時段：到這個時間點之前，每分鐘問電腦一次「有沒有人在叫我」。 */
+    /** 鬧鐘鈴聲：使用者從手機裡選的音樂（空 = 系統預設鬧鐘鈴聲）。 */
+    fun sound(c: Context): String = p(c).getString("sound", "") ?: ""
+    fun soundName(c: Context): String = p(c).getString("soundName", "") ?: ""
+    fun setSound(c: Context, uri: String, name: String) { p(c).edit().putString("sound", uri).putString("soundName", name).apply() }
+
     fun nudgeUntil(c: Context): Long = p(c).getLong("nudgeUntil", 0L)
     fun setNudgeUntil(c: Context, t: Long) { p(c).edit().putLong("nudgeUntil", t).apply() }
 }
@@ -189,15 +194,9 @@ object Scheduler {
         am(c).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + SYNC_INTERVAL, pi)
     }
 
-    /** 「我醒了」：取消接下來 3 小時內已經排好的鬧鐘，回傳取消了幾個。 */
-    fun markAwake(c: Context): Int {
-        val until = System.currentTimeMillis() + AWAKE_WINDOW
-        val rest = upcoming(c).filter { it.millis <= until }
-        for (item in rest) cancel(c, item)
-        val today = java.time.LocalDate.now().toString()
-        Store.setSkipped(c, Store.skipped(c).filter { it >= today }.toSet() + rest.map { it.key })
+    /** 「我醒了」：不再讓別人叫我起床。後面的鬧鐘不取消，照樣會響。 */
+    fun markAwake(c: Context) {
         stopNudgeWatch(c)
-        return rest.size
     }
 
     private fun nudgePi(c: Context): PendingIntent =
@@ -223,7 +222,7 @@ object Scheduler {
     fun checkNudge(c: Context): String? {
         return try {
             val js = JSONObject(Api.get(c, "/api/phone/nudge"))
-            if (js.optBoolean("awake")) {         // 在網頁上按過「我醒了」：手機這邊也取消後面的鬧鐘
+            if (js.optBoolean("awake")) {         // 在網頁上按過「我醒了」：不用再問有沒有人叫我
                 markAwake(c)
                 null
             } else js.optJSONObject("nudge")?.optString("from")

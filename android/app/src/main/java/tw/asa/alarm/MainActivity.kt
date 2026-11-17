@@ -261,7 +261,7 @@ class MainActivity : Activity() {
     inner class Bridge {
         @JavascriptInterface fun sync() = syncInBackground()
         @JavascriptInterface fun openSetup() = runOnUiThread { this@MainActivity.openSetup() }
-        @JavascriptInterface fun version(): String = "1.8"
+        @JavascriptInterface fun version(): String = "2.0"
         @JavascriptInterface fun ready() = runOnUiThread { hideSplash() }
         @JavascriptInterface fun speak(text: String) = Voice.speak(this@MainActivity, text)
         @JavascriptInterface fun stopSpeak() = Voice.stop()

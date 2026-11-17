@@ -67,6 +67,21 @@ class SetupActivity : Activity() {
         })
         root.addView(listCard)
 
+        // 鬧鐘鈴聲
+        val ring = Ui.card(this)
+        ring.addView(Ui.text(this, tr("鬧鐘鈴聲", "Alarm sound"), 13f, Ui.MUTE, true))
+        soundLabel = Ui.text(this, "", 16f)
+        soundLabel.setPadding(0, Ui.dp(this, 8), 0, 0)
+        ring.addView(soundLabel)
+        ring.addView(Ui.button(this, tr("選手機裡的音樂", "Pick music on this phone"), true) {
+            pick(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*"), REQ_SOUND)
+        })
+        ring.addView(Ui.button(this, tr("改回預設鈴聲", "Use the default sound"), false) {
+            Store.setSound(this, "", ""); showSound()
+        })
+        root.addView(ring)
+        showSound()
+
         // 權限
         perms = Ui.card(this)
         root.addView(perms)
@@ -96,6 +111,36 @@ class SetupActivity : Activity() {
         Scheduler.scheduleAll(this)
         Scheduler.scheduleSyncTick(this)
         if (!fromLink(intent) && Store.url(this).isNotEmpty()) syncNow()
+    }
+
+    private lateinit var soundLabel: android.widget.TextView
+    private val REQ_SOUND = 41
+
+    private fun showSound() {
+        soundLabel.text = if (Store.sound(this).isEmpty()) tr("系統預設鬧鐘鈴聲", "System default alarm sound") else "🎵 " + Store.soundName(this)
+    }
+
+    private fun pick(intent: Intent, req: Int) {
+        try { startActivityForResult(intent, req) } catch (_: Exception) {
+            Toast.makeText(this, tr("這支手機沒有可以選檔案的程式", "No file picker on this phone"), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    @Deprecated("簡單起見用舊的 API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val uri = data?.data
+        if (requestCode != REQ_SOUND || resultCode != RESULT_OK || uri == null) return
+        try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
+        var name = uri.lastPathSegment ?: tr("自選音樂", "Custom music")
+        try {
+            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) name = it.getString(0) ?: name
+            }
+        } catch (_: Exception) { }
+        Store.setSound(this, uri.toString(), name.substringBeforeLast('.'))
+        showSound()
+        Toast.makeText(this, tr("設好了！按「10 秒後響一個測試鬧鐘」聽聽看", "Done! Ring a test alarm to hear it"), Toast.LENGTH_LONG).show()
     }
 
     private lateinit var urlField: EditText

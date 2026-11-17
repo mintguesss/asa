@@ -113,16 +113,24 @@ class AlarmService : Service() {
         } catch (_: Exception) { }
 
         try {
-            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            val def = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            val mine = Store.sound(this)
             val mp = MediaPlayer()
             mp.setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setContentType(if (mine.isEmpty()) AudioAttributes.CONTENT_TYPE_SONIFICATION else AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build()
             )
-            mp.setDataSource(this, uri)
+            try {                                   // 自己選的音樂（檔案被刪了就改回預設鈴聲）
+                mp.setDataSource(this, if (mine.isEmpty()) def else android.net.Uri.parse(mine))
+            } catch (_: Exception) {
+                mp.reset()
+                mp.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                mp.setDataSource(this, def)
+            }
             mp.isLooping = true
             mp.setVolume(volume, volume)
             mp.prepare()

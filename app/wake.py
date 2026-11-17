@@ -85,10 +85,7 @@ def mark_awake(source: str = "web") -> str:
 
 def on_awake(now: datetime | None = None) -> None:
     now = now or datetime.now()
-    db.kv_set("nudge", "")
-    until = min(now + timedelta(minutes=WINDOW), now.replace(hour=23, minute=59))
-    db.run("UPDATE alarm_plan SET enabled = 0 WHERE date = ? AND enabled = 1 AND time > ? AND time <= ?",
-           (now.date().isoformat(), now.strftime("%H:%M"), until.strftime("%H:%M")))
+    db.kv_set("nudge", "")          # 後面的鬧鐘不關：照樣會響，免得按掉之後又睡回去
     if db.kv_get("awake_logged") != now.date().isoformat():
         db.kv_set("awake_logged", now.date().isoformat())
         social.log("awake", now.strftime("%H:%M"), db.me(), None)
