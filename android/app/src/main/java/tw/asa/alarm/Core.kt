@@ -76,6 +76,18 @@ object Store {
         p(c).edit().putString("rings", java.time.LocalDate.now().toString() + ":" + (ringsToday(c) + 1)).apply()
     }
 
+    /** 從檔案選擇器拿到的檔案：保留讀取權限，回傳檔名（不含副檔名）。 */
+    fun keep(c: Context, uri: Uri): String {
+        try { c.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
+        var name = uri.lastPathSegment ?: ""
+        try {
+            c.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) name = it.getString(0) ?: name
+            }
+        } catch (_: Exception) { }
+        return name.substringBeforeLast('.')
+    }
+
     fun nudgeUntil(c: Context): Long = p(c).getLong("nudgeUntil", 0L)
     fun setNudgeUntil(c: Context, t: Long) { p(c).edit().putLong("nudgeUntil", t).apply() }
 }

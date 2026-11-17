@@ -1013,3 +1013,8 @@ body.hold #view,body.hold #view *{animation-play-state:paused!important}
 
 .wx.loading{min-height:150px}.wx.loading .muted{animation:pulse 1.4s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.4}}
+
+/* 設定 → 手機 App：鬧鐘外觀 */
+.alook{margin-top:10px}
+.alook dd{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.alook dd>span{margin-right:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}

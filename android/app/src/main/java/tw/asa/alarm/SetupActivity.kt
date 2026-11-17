@@ -38,7 +38,7 @@ class SetupActivity : Activity() {
         val pad = Ui.dp(this, 20)
         root.setPadding(pad, Ui.dp(this, 28), pad, Ui.dp(this, 40))
 
-        root.addView(Ui.text(this, tr("ASA · App 設定", "ASA · APP SETTINGS"), 13f, Ui.MUTE, true).also { it.letterSpacing = 0.2f })
+        root.addView(Ui.text(this, tr("ASA · 權限與連線", "ASA · PERMISSIONS & CONNECTION"), 13f, Ui.MUTE, true).also { it.letterSpacing = 0.2f })
         root.addView(Ui.button(this, tr("← 回到 Asa", "← Back to Asa"), false) { openMain() })
 
         // 下一個鬧鐘
@@ -61,40 +61,7 @@ class SetupActivity : Activity() {
         status.setPadding(0, Ui.dp(this, 12), 0, 0)
         listCard.addView(status)
         listCard.addView(Ui.button(this, tr("立即同步", "Sync now"), true) { syncNow() })
-        listCard.addView(Ui.button(this, tr("10 秒後響一個測試鬧鐘", "Ring a test alarm in 10 seconds"), false) {
-            Scheduler.testAlarm(this, 10)
-            Toast.makeText(this, tr("10 秒後會響，可以先把螢幕關掉試試", "It rings in 10 seconds. Try turning the screen off first"), Toast.LENGTH_LONG).show()
-        })
         root.addView(listCard)
-
-        // 鬧鐘鈴聲
-        val ring = Ui.card(this)
-        ring.addView(Ui.text(this, tr("鬧鐘鈴聲", "Alarm sound"), 13f, Ui.MUTE, true))
-        soundLabel = Ui.text(this, "", 16f)
-        soundLabel.setPadding(0, Ui.dp(this, 8), 0, 0)
-        ring.addView(soundLabel)
-        ring.addView(Ui.button(this, tr("選手機裡的音樂", "Pick music on this phone"), true) {
-            pick(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*"), REQ_SOUND)
-        })
-        ring.addView(Ui.button(this, tr("改回預設鈴聲", "Use the default sound"), false) {
-            Store.setSound(this, "", ""); showSound()
-        })
-        ring.addView(Ui.text(this, tr("背景圖", "Background"), 13f, Ui.MUTE, true).also { it.setPadding(0, Ui.dp(this, 18), 0, 0) })
-        bgLabel = Ui.text(this, "", 16f)
-        bgLabel.setPadding(0, Ui.dp(this, 8), 0, 0)
-        ring.addView(bgLabel)
-        ring.addView(Ui.button(this, tr("選手機裡的照片", "Pick a photo on this phone"), true) {
-            pick(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"), REQ_BG)
-        })
-        ring.addView(Ui.button(this, tr("改回預設漸層", "Use the default gradient"), false) {
-            Store.setBackground(this, ""); showSound()
-        })
-        ring.addView(Ui.button(this, tr("試試起床確認（10 秒後）", "Try the wake check (in 10 seconds)"), false) {
-            Scheduler.scheduleCheck(this, 10)
-            Toast.makeText(this, tr("等一下會震動問你還醒著嗎；1 分鐘內沒按就會大聲響", "It'll vibrate and ask if you're awake; ignore it for a minute and it rings loudly"), Toast.LENGTH_LONG).show()
-        })
-        root.addView(ring)
-        showSound()
 
         // 權限
         perms = Ui.card(this)
@@ -125,44 +92,6 @@ class SetupActivity : Activity() {
         Scheduler.scheduleAll(this)
         Scheduler.scheduleSyncTick(this)
         if (!fromLink(intent) && Store.url(this).isNotEmpty()) syncNow()
-    }
-
-    private lateinit var soundLabel: android.widget.TextView
-    private lateinit var bgLabel: android.widget.TextView
-    private val REQ_SOUND = 41
-    private val REQ_BG = 42
-
-    private fun showSound() {
-        soundLabel.text = if (Store.sound(this).isEmpty()) tr("系統預設鬧鐘鈴聲", "System default alarm sound") else "🎵 " + Store.soundName(this)
-        bgLabel.text = if (Store.background(this).isEmpty()) tr("預設漸層", "Default gradient") else tr("🖼 已選照片", "🖼 Photo selected")
-    }
-
-    private fun pick(intent: Intent, req: Int) {
-        try { startActivityForResult(intent, req) } catch (_: Exception) {
-            Toast.makeText(this, tr("這支手機沒有可以選檔案的程式", "No file picker on this phone"), Toast.LENGTH_LONG).show()
-        }
-    }
-
-    @Deprecated("簡單起見用舊的 API")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        val uri = data?.data
-        if ((requestCode != REQ_SOUND && requestCode != REQ_BG) || resultCode != RESULT_OK || uri == null) return
-        try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
-        if (requestCode == REQ_BG) {
-            Store.setBackground(this, uri.toString()); showSound()
-            Toast.makeText(this, tr("設好了！按「10 秒後響一個測試鬧鐘」看看", "Done! Ring a test alarm to see it"), Toast.LENGTH_LONG).show()
-            return
-        }
-        var name = uri.lastPathSegment ?: tr("自選音樂", "Custom music")
-        try {
-            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
-                if (it.moveToFirst()) name = it.getString(0) ?: name
-            }
-        } catch (_: Exception) { }
-        Store.setSound(this, uri.toString(), name.substringBeforeLast('.'))
-        showSound()
-        Toast.makeText(this, tr("設好了！按「10 秒後響一個測試鬧鐘」聽聽看", "Done! Ring a test alarm to hear it"), Toast.LENGTH_LONG).show()
     }
 
     private lateinit var urlField: EditText

@@ -863,10 +863,10 @@ VIEW.link = async () => {
         ${P.multi && p.alarm_mode !== 'off' ? `<dt>${t('叫不醒時')}</dt><dd><input class="field num" type="number" min="0" max="180" value="${p.buddy_minutes}" style="width:76px" onchange="${patch('{buddy_minutes:+this.value}')}"> <span class="muted">${t('分鐘後通知其他人來叫（0 = 不通知）')}</span></dd>` : ''}
         ${P.multi ? `<dt>${t('我的行程')}</dt><dd>${pick('visible', [['full', '其他人看得到'], ['busy', '只顯示有事'], ['none', '不顯示']])}</dd>
 ` : ''}</dl>
-      <details class="fold in"><summary>${t('連線資訊（手機 App、手機瀏覽器）')}</summary><dl class="kv">
+      ${NATIVE && p.me ? '' : `<details class="fold in"><summary>${t('連線資訊（手機 App、手機瀏覽器）')}</summary><dl class="kv">
         <dt>${t('伺服器網址')}</dt><dd><code>${esc(url)}</code></dd><dt>${t('存取碼')}</dt><dd><code>${esc(p.token)}</code></dd>
         <dt>${t('手機瀏覽器')}</dt><dd><code>${esc(url)}/?token=${esc(p.token)}</code></dd>
-        ${p.me ? `<dt>${t('最後同步')}</dt><dd>${p.phone_last_sync ? esc(p.phone_last_sync.replace('T', ' ')) : `<span class="no">${t('還沒連上來過')}</span>`}</dd>` : ''}</dl></details>
+        ${p.me ? `<dt>${t('最後同步')}</dt><dd>${p.phone_last_sync ? esc(p.phone_last_sync.replace('T', ' ')) : `<span class="no">${t('還沒連上來過')}</span>`}</dd>` : ''}</dl></details>`}
       <details class="fold in"><summary>${t('這個人的通知管道')}</summary>
         <form onsubmit="event.preventDefault();pact('/profiles/${p.id}','PATCH',{notify:formData(this)},'${t('已儲存')}')">
           ${p.channels.map(c => `<div class="chrow"><span class="chip ${c.configured ? 'on' : ''}">${esc(c.label)}</span>${c.env.map(k => `<input class="field" type="password" autocomplete="off" name="${k}" placeholder="${k}">`).join('')}</div>`).join('')}
@@ -888,8 +888,8 @@ VIEW.link = async () => {
       <div class="addrow"><button class="btn" onclick="api('/notify/brief','POST').then(r=>sent(r.result))">${t('現在推播')}</button></div></details>
     <div class="muted" style="margin-top:14px">${t('設定都在 .env，改完重新啟動才會生效。')}</div></div>`;
   const phone = `<div class="card"><h3>${t('手機 App')}</h3>${NATIVE
-      ? `<div class="muted">${t('你正在用 Asa App：鬧鐘會在時間到時全螢幕響鈴。')}</div>${phoneLine(ph)}
-         <div class="addrow"><button class="btn pri" onclick="AsaNative.openSetup()">${t('App 設定（權限、測試鬧鐘、連線）')}</button></div>`
+      ? `<div class="muted">${t('你正在用 Asa App：鬧鐘會在時間到時全螢幕響鈴。')}</div>${phoneLine(ph)}${alarmLook()}
+         <div class="addrow"><button class="btn" onclick="AsaNative.openSetup()">${t('權限與連線')}</button></div>`
       : `<div class="muted">${t('Android 手機裝 Asa App，鬧鐘才會在鎖定畫面響鈴；iPhone 改用推播叫你。')}</div>${phoneLine(ph)}
          <div class="addrow"><a class="btn pri" href="/phone">${t('把 Asa 裝到手機')}</a></div>`}</div>`;
   return `<div class="cols"><div class="stack">${placeCard(pl)}${phone}${members}</div><div class="stack">${look}${more}</div></div>`;
@@ -1304,3 +1304,19 @@ async function optimistic(el) {
 }
 /* App 開啟動畫：網頁第一次畫好才通知 App 收起動畫，首頁的進場動畫接著播 */
 window.splashGone = () => document.body.classList.remove('hold');
+
+/* ---------- 手機 App 的鬧鐘外觀（存在手機上） ---------- */
+function alarmLook() {
+  if (!window.AsaNative?.alarmLook) return `<div class="muted" style="margin-top:8px">${t('更新 Asa App 就能在這裡換鬧鐘鈴聲和背景圖')}</div>`;
+  let a = {};
+  try { a = JSON.parse(AsaNative.alarmLook()); } catch { /* 舊版 */ }
+  return `<dl class="kv alook">
+    <dt>${t('鬧鐘鈴聲')}</dt><dd><span class="${a.sound ? '' : 'muted'}">${a.sound ? '🎵 ' + esc(a.sound) : t('系統預設')}</span>
+      <button class="btn" onclick="AsaNative.pickSound()">${t('選音樂')}</button>${a.sound ? `<button class="btn ghost" onclick="AsaNative.resetSound();render()">${t('改回預設')}</button>` : ''}</dd>
+    <dt>${t('背景圖')}</dt><dd><span class="${a.bg ? '' : 'muted'}">${a.bg ? '🖼 ' + t('已選照片') : t('預設漸層')}</span>
+      <button class="btn" onclick="AsaNative.pickBackground()">${t('選照片')}</button>${a.bg ? `<button class="btn ghost" onclick="AsaNative.resetBackground();render()">${t('改回預設')}</button>` : ''}</dd>
+    <dt>${t('試試看')}</dt><dd><button class="btn" onclick="AsaNative.testAlarm();toast(t('10 秒後會響，可以先把螢幕關掉'))">${t('測試鬧鐘')}</button>
+      <button class="btn" onclick="AsaNative.testCheck();toast(t('10 秒後會震動問你還醒著嗎；1 分鐘內沒按就會大聲響'))">${t('測試起床確認')}</button></dd></dl>
+    <div class="muted">${t('按「我醒了」只停掉當下這一個；5 分鐘後會確認你還醒著。同一天響越多次，題目越難。')}</div>`;
+}
+window.onNativePicked = () => { toast(t('設好了！可以按「測試鬧鐘」看看')); render(); };

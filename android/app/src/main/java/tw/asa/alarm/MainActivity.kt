@@ -239,12 +239,24 @@ class MainActivity : Activity() {
 
     private fun openSetup() = startActivity(Intent(this, SetupActivity::class.java))
 
+    private fun pickFile(type: String, req: Int) {
+        try { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(type), req) }
+        catch (_: Exception) { js("toast(" + org.json.JSONObject.quote(tr("這支手機沒有可以選檔案的程式", "No file picker on this phone")) + ")") }
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 7) {
             fileCb?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data))
             fileCb = null
+        }
+        val picked = data?.data
+        if ((requestCode == 41 || requestCode == 42) && resultCode == RESULT_OK && picked != null) {
+            val name = Store.keep(this, picked)
+            if (requestCode == 41) Store.setSound(this, picked.toString(), name.ifEmpty { tr("自選音樂", "Custom music") })
+            else Store.setBackground(this, picked.toString())
+            js("window.onNativePicked && onNativePicked()")
         }
         if (requestCode == 8) {         // 語音辨識的結果交給網頁
             val text = if (resultCode == RESULT_OK) data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull().orEmpty() else ""
@@ -261,7 +273,17 @@ class MainActivity : Activity() {
     inner class Bridge {
         @JavascriptInterface fun sync() = syncInBackground()
         @JavascriptInterface fun openSetup() = runOnUiThread { this@MainActivity.openSetup() }
-        @JavascriptInterface fun version(): String = "2.1"
+        @JavascriptInterface fun version(): String = "2.2"
+        // 鬧鐘的鈴聲、背景圖存在手機上，設定畫面在網頁的「設定 → 手機 App」
+        @JavascriptInterface fun alarmLook(): String = org.json.JSONObject()
+            .put("sound", if (Store.sound(this@MainActivity).isEmpty()) "" else Store.soundName(this@MainActivity))
+            .put("bg", Store.background(this@MainActivity).isNotEmpty()).toString()
+        @JavascriptInterface fun pickSound() = runOnUiThread { pickFile("audio/*", 41) }
+        @JavascriptInterface fun pickBackground() = runOnUiThread { pickFile("image/*", 42) }
+        @JavascriptInterface fun resetSound() = Store.setSound(this@MainActivity, "", "")
+        @JavascriptInterface fun resetBackground() = Store.setBackground(this@MainActivity, "")
+        @JavascriptInterface fun testAlarm() = Scheduler.testAlarm(this@MainActivity, 10)
+        @JavascriptInterface fun testCheck() = Scheduler.scheduleCheck(this@MainActivity, 10)
         @JavascriptInterface fun ready() = runOnUiThread { hideSplash() }
         @JavascriptInterface fun speak(text: String) = Voice.speak(this@MainActivity, text)
         @JavascriptInterface fun stopSpeak() = Voice.stop()

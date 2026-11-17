@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<title>Asa 鬧鐘</title>
+<style>
+  /* 鬧鐘響的時候的全螢幕畫面。App 用 WebView 載入；window.AsaAlarm 是 App 提供的介面。 */
+  :root { --ink: #fff; --soft: rgba(255,255,255,.78); --glass: rgba(20,16,40,.38); --line: rgba(255,255,255,.18);
+          --a1: #ff7a8a; --a2: #ffa77a; --a3: #8b5cf6; }
+  [hidden] { display: none !important; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: #0b0a18; color: var(--ink); overflow: hidden;
+    font-family: system-ui, -apple-system, "Noto Sans TC", "PingFang TC", sans-serif; }
+  body { display: flex; flex-direction: column; min-height: 100%; }
+
+  /* 背景：照片靠上對齊（臉通常在上面），上淡下深兩層暗色讓字看得清楚 */
+  .bg { position: fixed; inset: 0; background: linear-gradient(160deg, #2a1f6b, #7c3aed 40%, #ff5fa2 75%, #ffb347);
+    background-size: cover; background-position: center 18%; animation: breathe 18s ease-in-out infinite alternate; }
+  .bg.photo { background-image: var(--photo); }
+  @keyframes breathe { from { transform: scale(1.02); } to { transform: scale(1.08); } }
+  .shade { position: fixed; inset: 0; pointer-events: none;
+    background: linear-gradient(180deg, rgba(0,0,0,.45) 0%, rgba(0,0,0,0) 14%, rgba(0,0,0,0) 40%, rgba(8,6,20,.55) 58%, rgba(8,6,20,.9) 100%); }
+
+  .wrap { position: relative; flex: 1; display: flex; flex-direction: column; padding: calc(env(safe-area-inset-top) + 18px) 20px calc(env(safe-area-inset-bottom) + 20px); }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); white-space: nowrap; }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--a1); box-shadow: 0 0 0 0 var(--a1); animation: ping 1.6s infinite; }
+  @keyframes ping { 70% { box-shadow: 0 0 0 7px rgba(255,122,138,0); } 100% { box-shadow: 0 0 0 0 rgba(255,122,138,0); } }
+  .gap { flex: 1; min-height: 12px; }
+
+  /* 時鐘放在照片下半部，不擋臉 */
+  .clock { font-size: clamp(64px, 21vw, 92px); font-weight: 700; letter-spacing: -2px; line-height: 1; font-variant-numeric: tabular-nums;
+    text-shadow: 0 4px 24px rgba(0,0,0,.45); }
+  .date { margin-top: 6px; font-size: 15px; color: var(--soft); text-shadow: 0 2px 10px rgba(0,0,0,.5); }
+  .rest { margin-top: 4px; font-size: 13px; color: var(--soft); }
+
+  .card { margin-top: 14px; padding: 14px; border-radius: 22px; background: var(--glass); border: 1px solid var(--line);
+    backdrop-filter: blur(22px) saturate(1.3); -webkit-backdrop-filter: blur(22px) saturate(1.3); box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+
+  /* 音樂播放中 */
+  .player { display: grid; grid-template-columns: 54px 1fr auto; align-items: center; gap: 12px; }
+  .disc { width: 54px; height: 54px; border-radius: 50%; position: relative; animation: spin 6s linear infinite;
+    background: radial-gradient(circle, #111 0 18%, transparent 19%), conic-gradient(from 0deg, var(--a3), var(--a1), var(--a2), var(--a3));
+    background-size: cover; background-position: center 18%; box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+  .disc.photo { background-image: radial-gradient(circle, #111 0 9%, rgba(255,255,255,.85) 10% 12%, transparent 13%), var(--photo); background-size: cover, 260%; background-position: center, 30% 20%; }
+  .disc::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: repeating-radial-gradient(circle, rgba(0,0,0,0) 0 3px, rgba(0,0,0,.12) 3px 4px); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .song { min-width: 0; }
+  .song .k { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--soft); }
+  .song b { display: block; font-size: 16px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .eq { display: flex; align-items: flex-end; gap: 3px; height: 22px; }
+  .eq i { width: 4px; border-radius: 2px; background: linear-gradient(var(--a2), var(--a1)); animation: eq 1s ease-in-out infinite; }
+  .eq i:nth-child(1) { animation-delay: -.2s } .eq i:nth-child(2) { animation-delay: -.5s } .eq i:nth-child(3) { animation-delay: -.1s } .eq i:nth-child(4) { animation-delay: -.7s } .eq i:nth-child(5) { animation-delay: -.35s }
+  @keyframes eq { 0%, 100% { height: 5px; } 50% { height: 22px; } }
+  .bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--soft); font-variant-numeric: tabular-nums; }
+  .bar .track { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,.2); overflow: hidden; }
+  .bar .fill { height: 100%; width: 0; border-radius: 2px; background: linear-gradient(90deg, var(--a2), var(--a1)); transition: width 1s linear; }
+
+  /* 算術 */
+  .q { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--soft); }
+  .q .lv { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,.14); }
+  .sum { margin: 6px 0 10px; font-size: 26px; font-weight: 700; text-align: center; letter-spacing: .5px; font-variant-numeric: tabular-nums; }
+  .row { display: flex; gap: 10px; }
+  .ans { flex: 1; min-width: 0; height: 54px; border-radius: 16px; border: 1px solid var(--line); background: rgba(0,0,0,.28); color: #fff;
+    font: 600 24px/1 inherit; text-align: center; outline: none; font-variant-numeric: tabular-nums; }
+  .ans::placeholder { color: rgba(255,255,255,.35); font-size: 16px; font-weight: 500; }
+  .ans:focus { border-color: rgba(255,255,255,.55); }
+  .ans.bad { animation: shake .35s; border-color: #ff6b7d; }
+  @keyframes shake { 25% { transform: translateX(-8px); } 50% { transform: translateX(7px); } 75% { transform: translateX(-4px); } }
+  .go { flex: none; width: 128px; height: 54px; border: 0; border-radius: 18px; color: #fff; font: 700 18px/1 inherit; letter-spacing: .5px;
+    background: linear-gradient(120deg, var(--a3), var(--a1) 55%, var(--a2)); box-shadow: 0 8px 24px rgba(255,122,138,.35); }
+  .go:active { transform: scale(.98); }
+  .note { margin-top: 10px; text-align: center; font-size: 12px; color: var(--soft); }
+
+  /* 起床確認 */
+  .ring { width: 120px; height: 120px; margin: 4px auto 8px; position: relative; }
+  .ring svg { transform: rotate(-90deg); }
+  .ring b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 34px; font-variant-numeric: tabular-nums; }
+  .ask { text-align: center; font-size: 17px; font-weight: 600; }
+  .in { animation: up .5s cubic-bezier(.2,.8,.2,1) both; }
+  .in:nth-child(2) { animation-delay: .06s } .in:nth-child(3) { animation-delay: .12s } .in:nth-child(4) { animation-delay: .18s }
+  @keyframes up { from { opacity: 0; transform: translateY(14px); } }
+</style>
+</head>
+<body>
+<div class="bg" id="bg"></div>
+<div class="shade"></div>
+<main class="wrap">
+  <div class="top"><span class="pill"><span class="dot"></span><span id="label"></span></span><span class="pill" id="count" hidden></span></div>
+  <div class="gap"></div>
+  <section id="main"></section>
+</main>
+<script>
+const N = window.AsaAlarm || null;                // 在瀏覽器裡開（測試用）就沒有
+let I = {};
+try { I = JSON.parse(N ? N.info() : (window.MOCK || '{}')); } catch (e) { I = {}; }
+const ZH = (I.lang || navigator.language || 'zh').startsWith('zh');
+const T = (zh, en) => ZH ? zh : en;
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const toast = m => N ? N.toast(m) : console.log(m);
+
+if (I.bg) { document.documentElement.style.setProperty('--photo', `url("${I.bg}")`); $('#bg').classList.add('photo'); }
+$('#label').textContent = I.check ? T('起床確認', 'Wake check') : (I.label || T('起床', 'Wake up'));
+if (!I.check && I.n > 1) { const c = $('#count'); c.hidden = false; c.textContent = T(`今天第 ${I.n} 個`, `Alarm #${I.n} today`); }
+
+const pad = n => String(n).padStart(2, '0');
+const WD = ZH ? ['日', '一', '二', '三', '四', '五', '六'] : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const clock = () => {
+  const d = new Date();
+  $('#clock') && ($('#clock').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`);
+  $('#date') && ($('#date').textContent = ZH ? `${d.getMonth() + 1} 月 ${d.getDate()} 日 星期${WD[d.getDay()]}` : `${WD[d.getDay()]}, ${d.toLocaleDateString('en', {month: 'short', day: 'numeric'})}`);
+};
+const head = `<div class="clock in" id="clock"></div><div class="date in" id="date"></div>`;
+
+/* 第 1～2 個：三位數 + 三位數；第 3～4 個：三個三位數相加；第 5 個起：兩位數 × 個位數 + 三位數 */
+const r = (a, b) => a + Math.floor(Math.random() * (b - a));
+function puzzle(n) {
+  if (n >= 5) { const a = r(12, 100), b = r(3, 10), c = r(100, 1000); return [`${a} × ${b} + ${c}`, a * b + c, T('難', 'hard')]; }
+  if (n >= 3) { const a = r(100, 1000), b = r(100, 1000), c = r(100, 1000); return [`${a} + ${b} + ${c}`, a + b + c, T('中', 'medium')]; }
+  const a = r(100, 1000), b = r(100, 1000); return [`${a} + ${b}`, a + b, T('暖身', 'warm-up')];
+}
+
+const player = () => `<div class="card player in">
+    <div class="disc ${I.bg ? 'photo' : ''}"></div>
+    <div class="song"><div class="k">${T('正在播放', 'Now playing')}</div><b>${esc(I.sound || T('預設鬧鐘鈴聲', 'Default alarm'))}</b></div>
+    <div class="eq"><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="bar"><span id="el">0:00</span><div class="track"><div class="fill" id="fill"></div></div><span>${T('漸大', 'rising')}</span></div></div>`;
+
+function alarm() {
+  const [q, ans, lv] = puzzle(I.n || 1);
+  const rest = I.rest ? T(`後面還有 ${I.rest} 個，下一個 ${I.next}`, `${I.rest} more, next at ${I.next}`) : T('這是這一輪最後一個鬧鐘', 'Last alarm of this round');
+  $('#main').innerHTML = `${head}<div class="rest in">${rest}</div>${player()}
+    <form class="card in" id="f" autocomplete="off">
+      <div class="q"><span>${T('答對才算醒', 'Solve it to prove you\'re awake')}</span><span class="lv">${lv}</span></div>
+      <div class="sum">${q} = ?</div>
+      <div class="row"><input class="ans" id="a" inputmode="numeric" pattern="[0-9]*" enterkeyhint="done" placeholder="${T('答案', 'Answer')}" aria-label="${T('答案', 'Answer')}">
+      <button class="go">${T('我醒了', 'I\'m awake')}</button></div>
+      <div class="note">${T('只會停掉這一個；5 分鐘後會確認你還醒著', 'Stops only this one; checks again in 5 minutes')}</div></form>`;
+  $('#f').onsubmit = e => {
+    e.preventDefault();
+    const a = $('#a');
+    if (a.value.trim() === String(ans)) { N ? N.awake() : toast('awake'); return; }
+    a.value = ''; a.classList.remove('bad'); void a.offsetWidth; a.classList.add('bad');
+    toast(T('答錯了，再算一次', 'Wrong answer, try again'));
+  };
+}
+
+function check() {
+  const C = 2 * Math.PI * 52;
+  $('#main').innerHTML = `${head}<div class="card in" style="margin-top:18px">
+      <div class="ask">${T('還醒著嗎？', 'Still awake?')}</div>
+      <div class="ring"><svg width="120" height="120"><circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="8"/>
+        <circle id="arc" cx="60" cy="60" r="52" fill="none" stroke="url(#g)" stroke-width="8" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="0" style="transition:stroke-dashoffset 1s linear"/>
+        <defs><linearGradient id="g"><stop offset="0" stop-color="#ffa77a"/><stop offset="1" stop-color="#ff7a8a"/></linearGradient></defs></svg><b id="left">60</b></div>
+      <div class="note" style="margin-top:0">${T('1 分鐘內沒按，就會大聲響', 'Ignore it for a minute and it rings loudly')}</div>
+      <button class="go" id="ok" style="width:100%;margin-top:12px">${T('我醒著 ✓', 'I\'m awake ✓')}</button></div>`;
+  $('#ok').onclick = () => N ? N.checkOk() : toast('ok');
+  const t0 = Date.now() - (I.since || 0);
+  const step = () => {
+    const left = Math.max(0, 60 - Math.floor((Date.now() - t0) / 1000));
+    $('#left').textContent = left;
+    $('#arc').style.strokeDashoffset = C * (1 - left / 60);
+  };
+  step(); setInterval(step, 1000);
+}
+
+(I.check ? check : alarm)();
+clock(); setInterval(clock, 1000);
+const t0 = Date.now() - (I.since || 0);
+setInterval(() => {                                  // 播放進度：裝飾用，3 分鐘一圈
+  const s = Math.floor((Date.now() - t0) / 1000), el = $('#el'), f = $('#fill');
+  if (el) el.textContent = `${Math.floor(s / 60)}:${pad(s % 60)}`;
+  if (f) f.style.width = `${(s % 180) / 1.8}%`;
+}, 1000);
+</script>
+</body>
+</html>
