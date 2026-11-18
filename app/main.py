@@ -468,6 +468,18 @@ def add_weekly(body: dict = Body(...)):
     return {"id": id_}
 
 
+@app.post("/api/weekly/bulk")
+def add_weekly_bulk(body: dict = Body(...)):
+    """課表／班表匯入：items = [{title, weekday, start_time, end_time, location}]；replace = 先清掉原本的。"""
+    items = [pick(x, WEEKLY_F) for x in body.get("items") or [] if x.get("title") and x.get("start_time")]
+    if body.get("replace"):
+        db.run("DELETE FROM weekly_events")
+    for x in items:
+        db.insert("weekly_events", x)
+    refresh_tomorrow()
+    return {"ok": True, "n": len(items)}
+
+
 @app.delete("/api/weekly/{id_}")
 def del_weekly(id_: int):
     db.run("DELETE FROM weekly_events WHERE id = ?", (id_,))

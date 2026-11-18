@@ -1039,3 +1039,39 @@ body.hold #view,body.hold #view *{animation-play-state:paused!important}
 @keyframes tipin{from{opacity:0;transform:translateY(-4px)}}
 .alook .volrow input{flex:1;min-width:120px;accent-color:var(--a2)}
 .alook .volrow>span{margin-right:0;min-width:3.2em;text-align:right}
+
+/* 照片裁切 */
+.cropbox{text-align:center;user-select:none;-webkit-user-select:none}
+.crop-h{margin:0 0 12px;font-weight:700;font-size:16px}
+.crop{position:relative;margin:0 auto;overflow:hidden;border-radius:14px;touch-action:none;cursor:grab;background:#000;box-shadow:0 0 0 1px var(--line)}
+.crop img{position:absolute;left:0;top:0;transform-origin:0 0;max-width:none;user-select:none;-webkit-user-drag:none;pointer-events:none}
+.crop.round::after{content:"";position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 999px rgba(0,0,0,.5);pointer-events:none}
+.crop-z{display:flex;align-items:center;gap:10px;margin:14px auto 0;max-width:320px;color:var(--mute)}
+.crop-z input{flex:1;accent-color:var(--a2)}
+.crop-tip{margin-top:6px;font-size:12.5px}
+/* 自訂背景圖（取代極光） */
+#bgimg{position:fixed;inset:0;z-index:-3;background:center/cover no-repeat;pointer-events:none}
+#bgimg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,7,20,.25),rgba(8,7,20,.5))}
+[data-theme=light] #bgimg::after{background:linear-gradient(180deg,rgba(255,255,255,.2),rgba(255,255,255,.45))}
+body.hasbg #aurora{display:none}
+/* 匯入課表／班表 */
+.importbtn{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;text-align:left;cursor:pointer;font:inherit;color:inherit;margin-bottom:14px}
+.importbtn b{font-size:15px}
+.imbox{max-width:min(760px,calc(100vw - 24px))!important;width:100%;max-height:calc(100dvh - 40px);overflow:auto}
+.imsrc,.imset,.imrows{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.imset{margin:10px 0;font-size:13px;color:var(--mute)}
+.imset label{display:inline-flex;align-items:center;gap:5px}
+.imset .field{padding:6px 8px;width:auto;min-width:0}
+.imset .field.num{width:58px}
+.imshift{display:inline-flex;align-items:center;gap:4px}
+.immsg{margin:8px 0;padding:9px 12px;border-radius:10px;background:color-mix(in srgb,var(--a2) 14%,transparent);font-size:13.5px}
+.imgrid{overflow:auto;max-height:46vh;border:1px solid var(--line);border-radius:12px}
+.imgrid table{border-collapse:collapse;width:100%;min-width:520px;font-size:12px}
+.imgrid th{position:sticky;top:0;background:var(--pop);padding:6px 4px;font-weight:600;color:var(--mute);z-index:1}
+.imgrid tbody th{position:sticky;left:0;font-weight:500;font-size:11px}
+.imgrid td{border:1px solid var(--line2);height:40px;padding:3px;vertical-align:middle;text-align:center;cursor:pointer;line-height:1.3;overflow-wrap:anywhere}
+.imgrid td.on{background:color-mix(in srgb,var(--a2) 18%,transparent)}
+.imgrid td:hover{outline:2px solid var(--a2);outline-offset:-2px}
+.imrows{margin-top:6px}
+.imprev{display:flex;flex-direction:column;gap:3px;margin-top:10px;font-size:13px;max-height:140px;overflow:auto}
+.imrep{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13.5px}

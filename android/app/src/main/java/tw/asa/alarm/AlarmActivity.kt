@@ -72,7 +72,7 @@ class AlarmActivity : Activity() {
         val s = Store.background(this)
         if (s.isEmpty()) return ""
         return try {
-            val uri = Uri.parse(s)
+            val uri = Uri.parse(s.substringBefore("?v="))
             val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, o) }
             val want = resources.displayMetrics.heightPixels

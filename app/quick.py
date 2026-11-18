@@ -11,7 +11,7 @@
   tomorrow 3pm meeting @room 5 / report by fri / this week clean room / alarm tomorrow 7:30 / every tue 9:10-12:00 calculus
 """
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from .i18n import tr, wd as wd_name
 
@@ -81,23 +81,39 @@ def _take(text: str, pattern: str):
     return m, (text[:m.start()] + " " + text[m.end():])
 
 
-def parse(text: str, today: date | None = None) -> dict:
+# 口語的「新增／設一個…」：說了是什麼就照那個建，不用猜
+VERB = r"(?:幫我|請|麻煩)?\s*(?:新增|增加|加入|加上|加|建立|設定|設|定|排|弄|開|記|記下)?\s*(?:一個|一筆|一項|個)?\s*"
+
+
+def parse(text: str, today: date | None = None, now: str | None = None) -> dict:
+    real = today is None
     today = today or date.today()
     raw = text.strip().strip("。，,.！!？? ")          # 語音辨識常會在句尾加標點
     t = _english(raw)
     out: dict = {"raw": raw}
 
-    # 類型關鍵字
+    # 類型關鍵字（說在哪裡都可以）
     is_alarm = False
+    force = None                                                  # 明講「行程」「待辦」「固定行程」
     m, t = _take(t, r"^\s*(鬧鐘|叫我|叫醒我)")
     if m:
         is_alarm = True
-    m, t = _take(t, r"(?:叫我起床|叫醒我|起床|的鬧鐘)\s*$")       # 「明天七點半叫我起床」
+    m, t = _take(t, VERB + r"(?:的)?鬧鐘")                          # 「幫我設一個明天七點的鬧鐘」「設定鬧鐘明天六點半」
     if m:
         is_alarm = True
-    t = re.sub(r"^\s*(?:提醒我|幫我|我要|記得)\s*", "", t)          # 口語開頭不算進標題
+    m, t = _take(t, r"(?:叫我起床|叫醒我|起床|叫我)\s*$")          # 「明天七點半叫我起床」「早上六點四十五叫我」
+    if m:
+        is_alarm = True
+    if not is_alarm:
+        for kind, pat in (("weekly", r"(?:固定行程|每週行程|每周行程|課表|課程)"), ("event", r"(?:行程|活動|約會|會議(?=\s|$))"),
+                          ("task", r"(?:待辦事項|待辦|代辦|任務|todo)")):
+            m, t = _take(t, r"^\s*" + VERB + pat + r"[:：]?")
+            if m:
+                force = kind
+                break
+    t = re.sub(r"^\s*(?:我|幫我|請|麻煩)?\s*(?:提醒我|記得|我要|要)?\s*", "", t)   # 口語開頭不算進標題
     weekly_wd = None
-    m, t = _take(t, r"每(?:週|周|星期|禮拜)([一二三四五六日天])")
+    m, t = _take(t, r"每(?:個)?(?:週|周|星期|禮拜)([一二三四五六日天])")
     if m:
         weekly_wd = WD_MAP[m.group(1)]
     week_scope = False
@@ -105,9 +121,11 @@ def parse(text: str, today: date | None = None) -> dict:
     if m:
         week_scope = True
 
-    # 地點
+    # 地點：「@工程五館」或句尾的「 在台北車站」
     loc = ""
     m, t = _take(t, r"[@＠]\s*(\S+)")
+    if not m:
+        m, t = _take(t, r"[\s，,]\s*(?:在|地點)\s*(\S{2,})\s*$")
     if m:
         loc = m.group(1)
 
@@ -139,6 +157,15 @@ def parse(text: str, today: date | None = None) -> dict:
                 if d < today - timedelta(days=30):
                     d = date(today.year + 1, mo, da)
             except ValueError:
+                d = None
+    if d is None:                                              # 「十一月二十五號」
+        m, t = _take(t, N + r"\s*月\s*" + r"(\d{1,2}|[一二三四五六七八九十]{1,3})" + r"\s*[日號号]")
+        if m:
+            try:
+                d = date(today.year, _num(m.group(1)), _num(m.group(2)))
+                if d < today - timedelta(days=30):
+                    d = date(today.year + 1, d.month, d.day)
+            except (ValueError, KeyError):
                 d = None
     if d is None:
         m, t = _take(t, N + r"\s*天後")
@@ -189,12 +216,20 @@ def parse(text: str, today: date | None = None) -> dict:
     if deadline:
         t = re.sub(r"(截止|due)", " ", t, flags=re.I)
     title = re.sub(r"\s+", " ", t).strip(" ，,。:：-")
+    title = re.sub(r"^(?:我|要|得)\s*(?=\S)", "", title) if len(title) > 2 else title
 
     if is_alarm:
+        title = re.sub("^" + VERB + "$", "", title).strip()       # 「設一個…的鬧鐘」剩下的「設一個」
         if not start:
             return out | {"type": "error", "message": tr("鬧鐘需要時間，例如「鬧鐘 明天 7:30」")}
-        dd = d or (today + timedelta(days=1))
+        if d:
+            dd = d
+        else:                                                  # 沒說哪天：今天還沒過就今天，不然明天
+            cur = now or (datetime.now().strftime("%H:%M") if real else "23:59")
+            dd = today if start > cur else today + timedelta(days=1)
         return out | {"type": "alarm", "date": dd.isoformat(), "time": start, "label": title}
+    if force == "weekly" and weekly_wd is None and d and start:
+        weekly_wd = d.weekday()
     if weekly_wd is not None:
         if not start or not title:
             return out | {"type": "error", "message": tr("每週行程需要時間和名稱，例如「每週二 9:10-12:00 微積分」")}
@@ -202,6 +237,12 @@ def parse(text: str, today: date | None = None) -> dict:
                       "title": title, "location": loc}
     if not title:
         return out | {"type": "error", "message": tr("看不出要做什麼，請加上名稱")}
+    if force == "event" and not start:
+        return out | {"type": "error", "message": tr("行程需要時間，例如「新增行程 明天下午三點 開會」")}
+    if force == "task" and not week_scope:
+        dd = d or today
+        return out | {"type": "task", "scope": "day", "title": title, "plan_date": dd.isoformat(),
+                      "due": f"{dd.isoformat()}T{start or '23:59'}" if deadline or start else None}
     if week_scope:
         return out | {"type": "task", "scope": "week", "title": title, "plan_date": today.isoformat()}
     if deadline:

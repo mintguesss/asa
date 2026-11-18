@@ -116,22 +116,11 @@ const shareBox = () => P.multi ? `<label class="share" title="${t('其他成員�
 const face = (p, cls = '') => p.avatar ? `<img class="face ${cls}" src="${esc(p.avatar)}" alt="">`
   : `<span class="face ${cls}" style="--c:${esc(p.color || '#7c5cff')}">${esc([...(p.name || '?')][0].toUpperCase())}</span>`;
 /* 選圖 → 裁成正中間的正方形、縮成 256px → 上傳 */
-function pickAvatar(pid) {
-  const inp = Object.assign(document.createElement('input'), {type: 'file', accept: 'image/*'});
-  inp.onchange = () => {
-    const file = inp.files[0]; if (!file) return;
-    const img = new Image();
-    img.onload = async () => {
-      const n = Math.min(img.width, img.height), c = Object.assign(document.createElement('canvas'), {width: 256, height: 256});
-      c.getContext('2d').drawImage(img, (img.width - n) / 2, (img.height - n) / 2, n, n, 0, 0, 256, 256);
-      URL.revokeObjectURL(img.src);
-      await api(`/profiles/${pid}/avatar`, 'POST', {data: c.toDataURL('image/jpeg', .86)});
-      await loadP(); toast(t('頭貼已更新')); render();
-    };
-    img.onerror = () => toast(t('讀不了這張圖'));
-    img.src = URL.createObjectURL(file);
-  };
-  inp.click();
+async function pickAvatar(pid) {
+  const data = await cropPhoto({aspect: 1, round: true, out: 320, title: t('調整頭貼')});
+  if (!data) return;
+  await api(`/profiles/${pid}/avatar`, 'POST', {data});
+  await loadP(); toast(t('頭貼已更新')); render();
 }
 /* 設定頁裡的選項：只存檔、不重畫整頁（重畫會閃一下） */
 async function quietSave(pid, body) { await api(`/profiles/${pid}`, 'PATCH', body); await loadP(); drawRail(); }
@@ -174,7 +163,7 @@ function drawRail() {
 addEventListener('resize', () => moveInd($('#rail'), $('#rail .nav.on'), false));
 function go(v, d) {
   S.view = v; if (isCal(v)) { S.cal = v; store.set('cal3', v); }
-  if (d) S.date = d; S.enter = true; window.scrollTo(0, 0);
+  if (d) S.date = d; S.enter = true; window.scrollTo(0, 0); drawRail();
   if (palPref() === 'random') S.rnd = randomPal();          // 隨機模式：每換一頁換一個顏色
   return document.startViewTransition && !document.hidden && !TOUCH_ ? document.startViewTransition(() => render()).updateCallbackDone : render();
 }
@@ -212,6 +201,7 @@ async function render(quiet) {
   $('#view').querySelectorAll('.card,.hero').forEach((c, i) => { c._src = src[i]; });
   S.skel = skeleton(tpl.content);
   decorate();
+  prefetch();
   fitHome();
   window.scrollTo(0, y);
   if (!S.booted) {                                  // 第一次畫好
@@ -820,7 +810,8 @@ VIEW.weekly = async () => {
       <div class="tadd-opts"><div class="wdpick">${WD1.map((c, i) => `<button type="button" onclick="this.classList.toggle('on')" data-d="${i}">${c}</button>`).join('')}</div>
         <span class="trange"><input class="field" type="time" name="start_time" required><span class="muted">–</span><input class="field" type="time" name="end_time"></span>
         <input class="field" type="text" name="location" placeholder="${t('地點')}" style="max-width:140px"></div>
-      <div class="muted hint">${t('可以一次選好幾天，例如每週二、四的課。')}</div></form>`;
+      <div class="muted hint">${t('可以一次選好幾天，例如每週二、四的課。')}</div></form>
+    <button class="card importbtn" onclick="openImport()"><b>📷 ${t('匯入課表／班表')}</b><span class="muted">${t('上傳截圖自動辨識，或貼上文字、直接填格子')}</span></button>`;
   const item = e => `<div class="ag weekly"><i class="num">${esc(e.start_time)}${e.end_time ? `<s>${esc(e.end_time)}</s>` : ''}</i>
       <b>${esc(e.title)}${e.location ? `<em>${esc(e.location)}</em>` : ''}</b><button class="x" onclick="act('/weekly/${e.id}','DELETE')" aria-label="${t('刪除')}">✕</button></div>`;
   if (MOB() || !w.length) return form + `<div class="wkl">${days.map((list, d) => list.length ? `<div class="card wkd ${d === today ? 'today' : ''}"><h3>${WDN[d]}<span class="cnt">${list.length}</span></h3>
@@ -847,6 +838,8 @@ VIEW.link = async () => {
       <dt>${t('語言')}</dt><dd><div class="seg sm"><button class="${LANG === 'zh' ? 'on' : ''}" onclick="setLang('zh')">中文</button><button class="${LANG === 'en' ? 'on' : ''}" onclick="setLang('en')">English</button></div></dd>
       <dt>${t('風格')}</dt><dd><div class="seg sm">${[['simple', '簡約'], ['vivid', '炫彩']].map(([v, l]) => `<button class="${styleNow() === v ? 'on' : ''}" onclick="setStyle('${v}')">${t(l)}</button>`).join('')}</div></dd>
       <dt>${t('主題')}</dt><dd><div class="seg sm"><button class="${th === 'dark' ? 'on' : ''}" onclick="if('${th}'!=='dark')toggleTheme().then(render)">${t('暗色')}</button><button class="${th === 'light' ? 'on' : ''}" onclick="if('${th}'!=='light')toggleTheme().then(render)">${t('亮色')}</button></div></dd>
+      <dt>${t('背景圖')}</dt><dd><span class="${bgImg() ? '' : 'muted'}" style="margin-right:8px">${bgImg() ? '🖼 ' + t('已選照片') : t('極光（預設）')}</span>
+        <button class="btn" onclick="pickWebBg()">${t('選照片')}</button>${bgImg() ? `<button class="btn ghost" onclick="setWebBg('');render()">${t('改回預設')}</button>` : ''}</dd>
       <dt>${t('色系')}</dt><dd><div class="pals"><button class="palm ${pref === 'auto' ? 'on' : ''}" onclick="setPalPref('auto')" title="${t('每一頁一個顏色，日曆跟著時段和星期變')}">${t('自動搭配')}</button>
         <button class="palm ${pref === 'random' ? 'on' : ''}" onclick="setPalPref('random')" title="${t('每換一頁隨機換一個顏色')}">🎲 ${t('隨機')}</button>
         ${Object.entries(PAL).map(([k, c]) => `<button class="pal ${pref === k ? 'on' : ''}" onclick="setPalPref('${k}')" title="${t(PAL_NAME[k])}" aria-label="${t(PAL_NAME[k])}" style="background:linear-gradient(135deg,${c.a.join(',')})"></button>`).join('')}</div></dd></dl>`);
@@ -1312,7 +1305,7 @@ function alarmLook() {
     <dt>${t('鬧鐘鈴聲')}</dt><dd><span class="${a.sound ? '' : 'muted'}">${a.sound ? '🎵 ' + esc(a.sound) : t('系統預設')}</span>
       <button class="btn" onclick="AsaNative.pickSound()">${t('選音樂')}</button>${a.sound ? `<button class="btn ghost" onclick="AsaNative.resetSound();render()">${t('改回預設')}</button>` : ''}</dd>
     <dt>${t('背景圖')}</dt><dd><span class="${a.bg ? '' : 'muted'}">${a.bg ? '🖼 ' + t('已選照片') : t('預設漸層')}</span>
-      <button class="btn" onclick="AsaNative.pickBackground()">${t('選照片')}</button>${a.bg ? `<button class="btn ghost" onclick="AsaNative.resetBackground();render()">${t('改回預設')}</button>` : ''}</dd>
+      <button class="btn" onclick="pickAlarmBg()">${t('選照片')}</button>${a.bg ? `<button class="btn ghost" onclick="AsaNative.resetBackground();render()">${t('改回預設')}</button>` : ''}</dd>
     ${AsaNative.setVolume ? `<dt>${t('音量')}</dt><dd class="volrow"><input type="range" min="5" max="100" step="5" value="${a.volume ?? 50}" aria-label="${t('音量')}"
         oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="AsaNative.setVolume(+this.value)"><span class="num">${a.volume ?? 50}%</span></dd>` : ''}
     <dt>${t('試試看')}</dt><dd><button class="btn" onclick="AsaNative.testAlarm();toast(t('10 秒後會響，可以先把螢幕關掉'))">${t('測試鬧鐘')}</button>
@@ -1383,3 +1376,306 @@ document.addEventListener('pointerdown', e => {
 document.addEventListener('touchmove', e => { if (dragging) e.preventDefault(); }, {passive: false});
 document.addEventListener('click', e => { if (dragging) { e.preventDefault(); e.stopPropagation(); } }, true);
 document.addEventListener('contextmenu', e => { if (e.target.closest?.('.tlist > .task')) e.preventDefault(); });
+
+/* ---------- 換頁不卡：閒下來時先把其他頁的資料抓好，切過去就不用等網路 ---------- */
+let prefT, prefing = false;
+function prefetch() {
+  clearTimeout(prefT);
+  prefT = setTimeout(async () => {
+    if (prefing) return;
+    prefing = true;
+    try {
+      for (const v of ['tasks', 'alarms', 'weekly', 'link', 'inbox', S.cal]) {
+        if (v === S.view || !VIEW[v] || fresh) continue;          // 正在畫畫面就先讓它
+        try { await VIEW[v](); } catch { /* 抓不到沒關係，切過去時再抓 */ }
+      }
+    } finally { prefing = false; }
+  }, 700);
+}
+
+/* ---------- 照片裁切：拖曳移動、雙指或滑桿縮放 ---------- */
+function pickImage() {
+  return new Promise(res => {
+    const inp = Object.assign(document.createElement('input'), {type: 'file', accept: 'image/*'});
+    inp.onchange = () => res(inp.files[0] || null);
+    inp.click();
+  });
+}
+function loadImg(src) {
+  return new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = src; });
+}
+async function cropPhoto({aspect = 1, round = false, out = 512, title = ''} = {}) {
+  const file = await pickImage();
+  if (!file) return null;
+  let img;
+  try { img = await loadImg(URL.createObjectURL(file)); } catch { toast(t('讀不了這張圖')); return null; }
+  return new Promise(done => {
+    const W = Math.round(Math.min(innerWidth - 72, 360, (innerHeight - 280) * aspect)), H = Math.round(W / aspect);
+    const d = sheetBox(`<p class="crop-h">${esc(title || t('調整照片'))}</p>
+      <div class="crop ${round ? 'round' : ''}" style="width:${W}px;height:${H}px"><img src="${img.src}" draggable="false" alt=""></div>
+      <div class="crop-z"><span aria-hidden="true">－</span><input type="range" min="1" max="5" step="0.01" value="1" aria-label="${t('縮放')}"><span aria-hidden="true">＋</span></div>
+      <div class="muted crop-tip">${t('拖曳移動位置，雙指或滑桿調整大小')}</div>
+      <div class="askrow" style="margin-top:12px"><button class="btn" data-v="0">${t('取消')}</button><button class="btn pri" data-v="1">${t('確定')}</button></div>`, 'cropbox');
+    const box = d.querySelector('.crop'), el = box.querySelector('img'), zr = d.querySelector('input[type=range]');
+    const iw = img.naturalWidth, ih = img.naturalHeight, s0 = Math.max(W / iw, H / ih);
+    let z = 1, x = (W - iw * s0) / 2, y = (H - ih * s0) / 2;
+    el.style.width = iw + 'px'; el.style.height = ih + 'px';
+    const draw = () => {
+      const s = s0 * z;
+      x = Math.min(0, Math.max(W - iw * s, x)); y = Math.min(0, Math.max(H - ih * s, y));
+      el.style.transform = `translate(${x}px,${y}px) scale(${s})`;
+      zr.value = z;
+    };
+    const zoomAt = (nz, px, py) => {
+      nz = Math.min(5, Math.max(1, nz));
+      const k = nz / z; x = px - (px - x) * k; y = py - (py - y) * k; z = nz; draw();
+    };
+    draw();
+    const pts = new Map();
+    let pinch = null;
+    box.onpointerdown = e => { box.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); pinch = null; };
+    box.onpointermove = e => {
+      if (!pts.has(e.pointerId)) return;
+      const [ox, oy] = pts.get(e.pointerId);
+      pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pts.size === 1) { x += e.clientX - ox; y += e.clientY - oy; draw(); return; }
+      const [a, b] = [...pts.values()], r = box.getBoundingClientRect();
+      const dist = Math.hypot(a[0] - b[0], a[1] - b[1]), mx = (a[0] + b[0]) / 2 - r.left, my = (a[1] + b[1]) / 2 - r.top;
+      if (pinch) { x += mx - pinch.mx; y += my - pinch.my; zoomAt(pinch.z * dist / pinch.dist, mx, my); }
+      else pinch = {dist, z};
+      pinch.mx = mx; pinch.my = my;
+    };
+    box.onpointerup = box.onpointercancel = e => { pts.delete(e.pointerId); pinch = null; };
+    box.onwheel = e => { e.preventDefault(); const r = box.getBoundingClientRect(); zoomAt(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX - r.left, e.clientY - r.top); };
+    zr.oninput = () => zoomAt(+zr.value, W / 2, H / 2);
+    const fin = ok => {
+      closeBox(d);
+      if (!ok) { URL.revokeObjectURL(img.src); return done(null); }
+      const s = s0 * z, oh = Math.round(out / aspect);
+      const c = Object.assign(document.createElement('canvas'), {width: out, height: oh});
+      c.getContext('2d').drawImage(img, -x / s, -y / s, W / s, H / s, 0, 0, out, oh);
+      URL.revokeObjectURL(img.src);
+      done(c.toDataURL('image/jpeg', .88));
+    };
+    let downBg = false;                                   // 拖到框外才放開不算點背景
+    d.onpointerdown = e => { downBg = e.target === d; };
+    d.onclick = e => { if (e.target === d) { if (downBg) fin(false); return; } const b = e.target.closest('[data-v]'); if (b) fin(b.dataset.v === '1'); };
+  });
+}
+
+/* 鬧鐘背景圖：照手機螢幕的比例裁 */
+async function pickAlarmBg() {
+  if (!AsaNative.setBackgroundData) return AsaNative.pickBackground();      // 舊版 App
+  const ratio = Math.min(screen.width, screen.height) / Math.max(screen.width, screen.height) || 9 / 19.5;
+  const data = await cropPhoto({aspect: ratio, out: 1080, title: t('調整鬧鐘背景')});
+  if (!data) return;
+  if (AsaNative.setBackgroundData(data)) { toast(t('設好了！可以按「測試鬧鐘」看看')); render(); }
+  else toast(t('存不起來，再試一次'));
+}
+
+/* 網頁／App 的背景圖（存在這台裝置上），取代極光 */
+const bgImg = () => { try { return localStorage.getItem('bgimg') || ''; } catch { return ''; } };
+function applyBg() {
+  const v = bgImg();
+  let el = document.getElementById('bgimg');
+  if (v && !el) { el = Object.assign(document.createElement('div'), {id: 'bgimg'}); document.body.prepend(el); }
+  if (el) el.style.backgroundImage = v ? `url("${v}")` : '';
+  document.body.classList.toggle('hasbg', !!v);
+}
+function setWebBg(v) {
+  try { v ? localStorage.setItem('bgimg', v) : localStorage.removeItem('bgimg'); } catch { return toast(t('照片太大，存不起來')); }
+  applyBg();
+}
+async function pickWebBg() {
+  const aspect = innerWidth / innerHeight;
+  const data = await cropPhoto({aspect, out: Math.round(Math.min(1600, innerWidth * (devicePixelRatio || 1))), title: t('調整背景圖')});
+  if (data) { setWebBg(data); toast(t('背景換好了')); render(); }
+}
+applyBg();
+
+/* ---------- 匯入課表／班表：截圖辨識、貼上文字、直接填格子 ---------- */
+const IM = {cells: {}, first: '08:00', len: 50, gap: 10, rows: 14, replace: false};
+const WDI = ['一', '二', '三', '四', '五', '六', '日'];
+const imTime = r => hhmm(mins(IM.first) + r * (+IM.len + +IM.gap));
+/* 一格的文字 → 課名、地點（OCR 常把 I 認成 1、|、!，順便修掉） */
+function imCell(raw) {
+  let s = raw.replace(/(?<=[一-鿿])\s*[.。·・,、:;]\s*(?=[一-鿿])/g, '').replace(/[|!]/g, 'I'), loc = '';
+  const m = s.match(/[（(]\s*([^()（）]+?)\s*[)）]?\s*$/) || s.match(/[（(]\s*([^()（）]+?)\s*[)）]/);
+  if (m) { loc = m[1].trim(); s = s.replace(m[0], ' '); }
+  if (s.includes('/')) {                                  // 「課名老師 /」：去掉老師（通常 2～3 個字）
+    s = s.split('/')[0].trim();
+    const cjk = s.match(/[一-鿿]{2,3}$/);
+    if (cjk && s.replace(/\s/g, '').length - cjk[0].length >= 3) s = s.slice(0, -cjk[0].length);
+  }
+  return {title: s.replace(/\s+/g, ' ').trim() || raw.trim(), location: loc};
+}
+function imEvents() {
+  const out = [];
+  for (let d = 0; d < 7; d++) {
+    let cur = null;
+    for (let r = 0; r <= IM.rows; r++) {
+      const v = r < IM.rows ? (IM.cells[`${r}_${d}`] || '').trim() : '';
+      const c = v ? imCell(v) : null;
+      if (cur && c && c.title === cur.title) { cur.last = r; cur.locs.push(c.location); continue; }
+      if (cur) out.push(cur);
+      cur = c ? {title: c.title, locs: [c.location], d, first: r, last: r} : null;
+    }
+  }
+  // OCR 認出「I1-404」和「11-404」其實是同一間：有認出 I 的那個才是對的
+  const all = out.flatMap(e => e.locs).filter(Boolean), key = l => l.replace(/I/g, '1');
+  const fix = l => all.filter(m => key(m) === key(l)).sort((a, b) => (b.match(/I/g) || []).length - (a.match(/I/g) || []).length)[0] || l;
+  return out.map(e => {
+    const n = {}; e.locs.filter(Boolean).map(fix).forEach(l => n[l] = (n[l] || 0) + 1);   // 地點取出現最多次的
+    const location = Object.keys(n).sort((a, b) => n[b] - n[a])[0] || '';
+    return {title: e.title, location, weekday: e.d, start_time: imTime(e.first), end_time: hhmm(mins(imTime(e.last)) + +IM.len)};
+  });
+}
+function openImport() {
+  const d = sheetBox('<div id="imbody"></div>', 'imbox');
+  let downBg = false;
+  d.onpointerdown = e => { downBg = e.target === d; };
+  d.onclick = e => { if (e.target === d && downBg) closeBox(d); };
+  IM.box = d;
+  drawImport();
+}
+function drawImport(msg = '') {
+  const ev = imEvents(), has = Object.values(IM.cells).some(v => v && v.trim());
+  $('#imbody').innerHTML = `<p class="crop-h">${t('匯入課表／班表')}</p>
+    <div class="imsrc"><button class="btn" onclick="imOcr()">📷 ${t('上傳截圖')}</button><button class="btn" onclick="imPaste()">📋 ${t('貼上文字')}</button>
+      ${has ? `<button class="btn ghost" onclick="IM.cells={};drawImport()">${t('清空')}</button>` : ''}</div>
+    ${msg ? `<div class="immsg">${msg}</div>` : `<div class="muted" style="margin:6px 0 2px">${t('點格子可以直接改；同一欄連續一樣的會合成一堂。')}</div>`}
+    <div class="imset"><label>${t('第一節')} <input class="field" type="time" value="${IM.first}" onchange="IM.first=this.value;drawImport()"></label>
+      <label>${t('每節')} <input class="field num" type="number" min="10" max="240" value="${IM.len}" onchange="IM.len=+this.value||50;drawImport()"> ${t('分')}</label>
+      <label>${t('下課')} <input class="field num" type="number" min="0" max="120" value="${IM.gap}" onchange="IM.gap=+this.value||0;drawImport()"> ${t('分')}</label>
+      <span class="imshift"><button class="btn ghost sm" onclick="imShift(-1)" title="${t('整張表往前一天')}">◀</button>${t('星期')}<button class="btn ghost sm" onclick="imShift(1)" title="${t('整張表往後一天')}">▶</button></span></div>
+    <div class="imgrid"><table><thead><tr><th></th>${WDI.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>
+      ${Array.from({length: IM.rows}, (_, r) => `<tr><th class="num">${imTime(r)}</th>${WDI.map((_, c) => { const v = IM.cells[`${r}_${c}`] || '';
+        return `<td class="${v ? 'on' : ''}" onclick="imEdit(${r},${c})">${esc(v)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>
+    <div class="imrows"><button class="btn ghost sm" onclick="IM.rows=Math.max(1,IM.rows-1);drawImport()">－ ${t('一列')}</button><button class="btn ghost sm" onclick="IM.rows++;drawImport()">＋ ${t('一列')}</button></div>
+    ${ev.length ? `<div class="imprev">${ev.map(e => `<span>${WDN[e.weekday]} ${e.start_time}–${e.end_time} <b>${esc(e.title)}</b>${e.location ? ' @' + esc(e.location) : ''}</span>`).join('')}</div>` : ''}
+    <label class="imrep"><input type="checkbox" ${IM.replace ? 'checked' : ''} onchange="IM.replace=this.checked"> ${t('先刪掉現有的固定行程')}</label>
+    <div class="askrow" style="margin-top:12px"><button class="btn" onclick="closeBox(IM.box)">${t('取消')}</button>
+      <button class="btn pri" ${ev.length ? '' : 'disabled'} onclick="imSave()">${ev.length ? t('加入 {0} 個固定行程', ev.length) : t('加入')}</button></div>`;
+}
+function imEdit(r, c) {
+  const cur = IM.cells[`${r}_${c}`] || '';
+  const d = sheetBox(`<p>${WDN[c]} ${imTime(r)}</p><input class="field big" value="${esc(cur)}" maxlength="60" autocomplete="off" placeholder="${t('課名 (地點)')}">
+    <div class="askrow" style="margin-top:14px">${cur ? `<button class="btn ghost" data-v="clr">${t('清除')}</button>` : ''}<button class="btn" data-v="0">${t('取消')}</button><button class="btn pri" data-v="1">${t('確定')}</button></div>`);
+  const inp = d.querySelector('input');
+  const fin = v => { closeBox(d); if (v !== null) { IM.cells[`${r}_${c}`] = v; drawImport(); } };
+  inp.onkeydown = e => { if (e.key === 'Enter') fin(inp.value.trim()); if (e.key === 'Escape') fin(null); };
+  d.onclick = e => { if (e.target === d) return fin(null); const b = e.target.closest('[data-v]'); if (b) fin(b.dataset.v === '1' ? inp.value.trim() : b.dataset.v === 'clr' ? '' : null); };
+  setTimeout(() => inp.focus(), 80);
+}
+function imShift(n) {
+  const out = {};
+  for (const [k, v] of Object.entries(IM.cells)) { const [r, c] = k.split('_').map(Number); out[`${r}_${(c + n + 7) % 7}`] = v; }
+  IM.cells = out; drawImport();
+}
+async function imSave() {
+  const ev = imEvents();
+  if (IM.replace && !await ask(t('會先刪掉現有的固定行程，再加入這 {0} 個。確定嗎？', ev.length), t('匯入'))) return;
+  await api('/weekly/bulk', 'POST', {items: ev, replace: IM.replace});
+  closeBox(IM.box); IM.cells = {}; toast(t('已加入 {0} 個固定行程', ev.length)); render();
+}
+/* 從學校網站複製的課表文字（一列一行、用 Tab 分欄） */
+const WDCH = {'日': 6, '天': 6, '一': 0, '二': 1, '三': 2, '四': 3, '五': 4, '六': 5, mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6};
+const wdOfText = s => { const m = String(s).toLowerCase().match(/(?:週|星期|禮拜)?\s*([日天一二三四五六])|\b(mon|tue|wed|thu|fri|sat|sun)/); return m ? WDCH[m[1] || m[2]] : null; };
+async function imPaste() {
+  const d = sheetBox(`<p>${t('把課表整個表格複製起來，貼在這裡（第一列要有星期）')}</p><textarea class="field" rows="8" style="width:100%;font-size:13px"></textarea>
+    <div class="askrow" style="margin-top:12px"><button class="btn" data-v="0">${t('取消')}</button><button class="btn pri" data-v="1">${t('讀取')}</button></div>`);
+  const ta = d.querySelector('textarea');
+  setTimeout(() => ta.focus(), 80);
+  const v = await new Promise(done => { d.onclick = e => { if (e.target === d) { closeBox(d); done(null); } const b = e.target.closest('[data-v]'); if (b) { closeBox(d); done(b.dataset.v === '1' ? ta.value : null); } }; });
+  if (!v) return;
+  const lines = v.split(/\r?\n/).filter(l => l.trim()).map(l => l.split('\t'));
+  const hi = lines.findIndex(l => l.filter(c => wdOfText(c) !== null && c.trim().length <= 4).length >= 3);
+  if (hi < 0) return drawImport(t('找不到星期那一列，請確定有複製到表格最上面那列。'));
+  const map = lines[hi].map(c => c.trim().length <= 4 ? wdOfText(c) : null);
+  IM.cells = {};
+  lines.slice(hi + 1).forEach((l, r) => l.forEach((c, i) => { if (map[i] != null && c.trim()) IM.cells[`${r}_${map[i]}`] = c.trim(); }));
+  IM.rows = Math.max(IM.rows, lines.length - hi - 1);
+  drawImport(t('讀到了，請檢查一下再加入。'));
+}
+/* 截圖辨識：先找表格線切出每一格，有字的格子才丟給 OCR（在你的手機／電腦上跑，照片不會上傳） */
+let ocrLib = null;
+function loadTesseract() {
+  return ocrLib || (ocrLib = new Promise((res, rej) => {
+    const s = Object.assign(document.createElement('script'), {src: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'});
+    s.onload = () => res(window.Tesseract); s.onerror = () => { ocrLib = null; rej(new Error('load')); };
+    document.head.append(s);
+  }));
+}
+function findGrid(img) {
+  const k = Math.min(1, 1200 / img.naturalWidth), w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+  const c = Object.assign(document.createElement('canvas'), {width: w, height: h}), g = c.getContext('2d', {willReadFrequently: true});
+  g.drawImage(img, 0, 0, w, h);
+  const px = g.getImageData(0, 0, w, h).data;
+  const ink = (x, y) => { const i = (y * w + x) * 4; return (px[i] + px[i + 1] + px[i + 2]) / 3 < 238; };
+  const bands = (n, frac) => {                       // 連續的「線」合成一條：[開始, 結束]
+    const out = []; let s = -1;
+    for (let i = 0; i <= n; i++) { const on = i < n && frac(i); if (on && s < 0) s = i; if (!on && s >= 0) { out.push([s, i - 1]); s = -1; } }
+    return out;
+  };
+  const vb = bands(w, x => { let n = 0; for (let y = 0; y < h; y += 2) n += ink(x, y); return n / (h / 2) > 0.45; });
+  const cols = [];
+  for (let i = 1; i < vb.length; i++) if (vb[i][0] - vb[i - 1][1] > w / 25) cols.push([vb[i - 1][1] + 1, vb[i][0] - 1]);
+  if (cols.length < 3) return null;
+  const x0 = cols[0][0], x1 = cols[cols.length - 1][1];
+  const hb = bands(h, y => { let n = 0; for (let x = x0; x <= x1; x += 2) n += ink(x, y); return n / ((x1 - x0) / 2) > 0.6; });
+  const rows = [];
+  for (let i = 1; i < hb.length; i++) {
+    const a = hb[i - 1][1] + 1, b = hb[i][0] - 1;
+    if (b - a < h / 80) continue;
+    const mid = Math.round((a + b) / 2);           // 表格裡的列：每條直線都會穿過
+    if (vb.filter(([s, e]) => s >= x0 - 3 && e <= x1 + 3).every(([s, e]) => ink(Math.round((s + e) / 2), mid))) rows.push([a, b]);
+  }
+  if (rows.length < 2) return null;
+  const head = hb.filter(([, e]) => e < rows[0][0]).pop();      // 表頭（星期）那一條
+  const filled = (x, y, X, Y) => { let n = 0, all = 0; for (let yy = y + 3; yy < Y - 3; yy += 2) for (let xx = x + 3; xx < X - 3; xx += 2) { all++; const i = (yy * w + xx) * 4; n += (px[i] + px[i + 1] + px[i + 2]) / 3 < 150; } return n / Math.max(1, all) > 0.004; };
+  return {k, cols, rows, head, cells: rows.map(([a, b]) => cols.map(([s, e]) => filled(s, a, e, b)))};
+}
+async function imOcr(given) {
+  const file = given instanceof Blob ? given : await pickImage();
+  if (!file) return;
+  let img;
+  try { img = await loadImg(URL.createObjectURL(file)); } catch { return drawImport(t('讀不了這張圖')); }
+  const G = findGrid(img);
+  if (!G) return drawImport(t('看不出表格的格線。可以改用「貼上文字」或直接點格子填。'));
+  const todo = G.cells.flatMap((row, r) => row.map((on, c) => on ? [r, c] : null)).filter(Boolean);
+  drawImport(`⏳ ${t('找到 {0} 欄 × {1} 列，正在辨識文字（第一次要下載辨識資料，約 10～30 秒）…', G.cols.length, G.rows.length)}`);
+  let T;
+  try { T = await loadTesseract(); } catch { return drawImport(t('下載辨識工具失敗，請確認有網路，或改用「貼上文字」。')); }
+  const worker = await T.createWorker(['chi_tra', 'eng']);
+  await worker.setParameters({tessedit_pageseg_mode: '6', preserve_interword_spaces: '1'});
+  const crop = (x, y, X, Y, inv) => {                 // 從原圖切出那一格，放大兩倍、四周留白
+    const K = 1 / G.k, sx = x * K, sy = y * K, sw = (X - x) * K, sh = (Y - y) * K, z = Math.max(1, 90 / sh, 2);
+    const c = Object.assign(document.createElement('canvas'), {width: Math.round(sw * z) + 40, height: Math.round(sh * z) + 40}), g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    if (inv) g.filter = 'invert(1) grayscale(1) contrast(1.6)';
+    g.drawImage(img, sx, sy, sw, sh, 20, 20, sw * z, sh * z);
+    return c;
+  };
+  const clean = s => s.replace(/\n+/g, ' ').replace(/(?<=[一-鿿])\s+(?=[一-鿿])/g, '').replace(/\s+/g, ' ').trim();
+  // 星期：讀表頭；讀不到就照欄數猜（7 欄從星期日開始，其他從星期一）
+  let wd = G.cols.map(() => null);
+  if (G.head) for (let i = 0; i < G.cols.length; i++) {
+    try { const {data} = await worker.recognize(crop(G.cols[i][0], G.head[0], G.cols[i][1], G.head[1] + 1, true)); wd[i] = wdOfText(clean(data.text)); } catch { /* 跳過 */ }
+  }
+  if (wd.filter(v => v !== null).length < 2) wd = G.cols.map((_, i) => (G.cols.length >= 7 ? i + 6 : i) % 7);
+  else wd = wd.map((v, i) => v ?? ((wd.find(x => x !== null) + i - wd.findIndex(x => x !== null) + 7) % 7));
+  IM.cells = {};
+  IM.rows = Math.max(G.rows.length, 1);
+  let n = 0;
+  for (const [r, c] of todo) {
+    $('#imbody .immsg') && ($('#imbody .immsg').textContent = `⏳ ${t('辨識中 {0}/{1}', ++n, todo.length)}`);
+    try {
+      const {data} = await worker.recognize(crop(G.cols[c][0], G.rows[r][0], G.cols[c][1], G.rows[r][1], false));
+      const v = clean(data.text);
+      if (v) IM.cells[`${r}_${wd[c]}`] = v;
+    } catch { /* 這格跳過 */ }
+  }
+  await worker.terminate();
+  URL.revokeObjectURL(img.src);
+  drawImport(t('辨識完成：欄位是 {0}。字可能有錯，點格子就能改；星期對不上就按 ◀ ▶。', wd.map(v => WDI[v]).join(' ')));
+}

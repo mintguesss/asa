@@ -309,13 +309,19 @@ class MainActivity : Activity() {
     inner class Bridge {
         @JavascriptInterface fun sync() = syncInBackground()
         @JavascriptInterface fun openSetup() = runOnUiThread { this@MainActivity.openSetup() }
-        @JavascriptInterface fun version(): String = "2.3"
+        @JavascriptInterface fun version(): String = "2.4"
         // 鬧鐘的鈴聲、背景圖存在手機上，設定畫面在網頁的「設定 → 手機 App」
         @JavascriptInterface fun alarmLook(): String = org.json.JSONObject()
             .put("sound", if (Store.sound(this@MainActivity).isEmpty()) "" else Store.soundName(this@MainActivity))
             .put("bg", Store.background(this@MainActivity).isNotEmpty())
             .put("volume", Store.volume(this@MainActivity)).toString()
         @JavascriptInterface fun setVolume(v: Int) = runOnUiThread { Store.setVolume(this@MainActivity, v); previewVolume() }
+        @JavascriptInterface fun setBackgroundData(data: String): Boolean = try {
+            val f = java.io.File(filesDir, "alarm_bg.jpg")
+            f.writeBytes(android.util.Base64.decode(data.substringAfter(','), android.util.Base64.DEFAULT))
+            Store.setBackground(this@MainActivity, Uri.fromFile(f).toString() + "?v=" + System.currentTimeMillis())
+            true
+        } catch (_: Exception) { false }
         @JavascriptInterface fun pickSound() = runOnUiThread { pickFile("audio/*", 41) }
         @JavascriptInterface fun pickBackground() = runOnUiThread { pickFile("image/*", 42) }
         @JavascriptInterface fun resetSound() = Store.setSound(this@MainActivity, "", "")

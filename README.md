@@ -19,17 +19,18 @@ ASA_DEMO=1 ./run.sh        # Windows: set ASA_DEMO=1 && run.bat
 ## Features
 
 - **Auto alarms** — rules like "weekdays: start 90 min before the first event, 8 alarms, 5 min apart". Re-planned whenever your schedule changes.
-- **Android companion app** — rings on its own (no internet needed once synced), full-screen on the lock screen, rising volume, a maths question before "I'm up", reports wake-up times back.
+- **Android companion app** — rings on its own (no internet needed once synced), full-screen on the lock screen with your own music, volume and photo, a maths question before "I'm up" (stops only that alarm), a wake check 5 minutes later, reports wake-up times back.
 - **Habit learning** — after a few mornings it suggests rule changes ("you sleep through the first 3, start later and ring more often").
 - **Calendar** — day / week / month views, weekly recurring events, days off.
+- **Timetable import** — upload a screenshot of your class timetable or shift grid; Asa finds the table lines and reads each cell with on-device OCR (Tesseract.js, the photo never leaves your device). Or paste the table text, or fill in the grid by hand.
 - **Couples and families** — add a member in Settings and each person gets their own alarms, to-dos, notifications and access code. Events and to-dos can be marked *shared*; a shared 9 am event moves both people's alarms, each by their own rule. No accounts or passwords, and nothing changes if you use it alone.
 - **Wake each other up** — members see whether the other person is up yet. If you are still asleep N minutes after your last alarm, the others get a push; one tap on *Wake them* makes your phone ring at full volume (Android app) or sends an urgent push (ntfy and others). Tap *I'm up* in the app or on the web and they know.
 - **Commute-aware alarms** — set your home address and how long it takes to reach your usual places; alarms move earlier by the travel time to the event's location, plus extra when rain is forecast (Open-Meteo). Unknown places can be estimated with OpenStreetMap (no live traffic or public transit).
 - **No Android phone?** — a member can be woken by push notification instead of the app (works on iPhone through ntfy, Telegram, LINE or Discord), and anyone can get a push N minutes before each event.
 - **Typhoon days (Taiwan)** — set `CLOSURE_AREA` and Asa watches the government closure notices; when classes are cancelled it marks the day off, drops the alarms and tells you.
 - **To-dos** — per day and per week, deadlines shown on the calendar, a 14-day load chart.
-- **One-line input** (`Ctrl+K`) — `tomorrow 3pm meeting @room 5`, `report by fri`, `alarm tomorrow 7:30`, `every tue 9:10-12:00 calculus` (English or Chinese).
-- **Looks** — animated aurora background, 21 colour palettes (one per page, pick one, or random), light/dark toggle, phone-friendly layout.
+- **One-line input** (`Ctrl+K`, or tap 🎤 and say it) — `tomorrow 3pm meeting @room 5`, `report by fri`, `alarm tomorrow 7:30`, `every tue 9:10-12:00 calculus` (English or Chinese; casual phrasing like 「幫我設一個明天早上七點的鬧鐘」 works too).
+- **Looks** — animated aurora background or your own photo, 21 colour palettes (one per page, pick one, or random), light/dark toggle, phone-friendly layout. Avatars and backgrounds can be cropped, moved and zoomed.
 - **Review inbox** — sources drop items in; nothing reaches your calendar until you approve it.
   - iCalendar feeds (Google Calendar, Outlook, Moodle, Canvas, …), including repeating events
   - trust a source? `AUTO_APPROVE=ics` skips the review step for it
@@ -79,6 +80,27 @@ Requests from the same machine are trusted; every other device must send the acc
 ## Android app
 
 Source is in `android/` (Kotlin, no third-party dependencies, minSdk 26). Build with Android Studio, or on Windows run `android\build_apk.bat`, which downloads a JDK, Gradle and the Android SDK into a separate folder and produces `android/AsaAlarm.apk`. Then enter the server URL and access code shown on the Settings page.
+
+### App vs. web
+
+The web version is Asa in a browser (optionally installed as a PWA). The big difference is **alarms**: a browser can't ring on the lock screen, so the web version can only wake you with push notifications.
+
+| | Android app (APK) | Android web | iPhone web |
+|---|---|---|---|
+| Alarms | ✅ full-screen over the lock screen | ⚠️ push only (ntfy, Telegram, LINE, Discord) | ⚠️ push only; silent in silent mode |
+| Rings with the PC off / no internet | ✅ alarms are stored on the phone | ❌ | ❌ |
+| Maths question, wake check, harder later | ✅ | ❌ | ❌ |
+| Own ringtone, alarm volume, alarm photo | ✅ | ❌ | ❌ |
+| Woken by your partner | ✅ rings at full volume | ⚠️ urgent push | ⚠️ urgent push |
+| Morning brief read aloud after waking | ✅ | ⚠️ tap *Morning brief* | ⚠️ tap *Morning brief* |
+| Voice input (🎤) | ✅ system speech recognition | ✅ Chrome | ⚠️ depends on Safari; use the keyboard mic |
+| Calendar, to-dos, weekly events, inbox | ✅ | ✅ | ✅ |
+| Timetable screenshot import | ✅ | ✅ | ✅ |
+| Background photo, avatar (move and zoom) | ✅ | ✅ | ✅ |
+| Weather and location | ✅ | ✅ with location permission | ✅ with location permission |
+| Install | copy `AsaAlarm.apk` to the phone | Chrome → *Install app* (HTTPS) | Safari → *Share → Add to Home Screen* (HTTPS) |
+
+On Android, use the app. On iPhone, set *Settings → Wake-up* to *Push notification*.
 
 ## Configuration
 
