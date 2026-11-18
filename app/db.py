@@ -181,7 +181,7 @@ def init_one() -> None:
         # 舊資料庫升級：補上後來才加的欄位
         for table, cols in (("inbox", (("end", "TEXT"), ("location", "TEXT DEFAULT ''"))),
                             ("events", (("shared", "INTEGER DEFAULT 0"),)),
-                            ("tasks", (("shared", "INTEGER DEFAULT 0"),)),
+                            ("tasks", (("shared", "INTEGER DEFAULT 0"), ("pos", "REAL"))),
                             ("profiles", (("avatar", "TEXT"), ("buddy_minutes", "INTEGER DEFAULT 10")))):
             have = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
             for col, ddl in cols:

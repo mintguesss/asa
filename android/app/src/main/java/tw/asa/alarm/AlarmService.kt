@@ -129,15 +129,15 @@ class AlarmService : Service() {
         holdWake()
         if (loud) volume = 1f
 
-        // 鬧鐘音量太小就先拉到六成，響完再調回去
+        // 鬧鐘音量照設定（被叫、確認沒按就最大聲），響完調回原本的
         try {
             val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val max = audio.getStreamMaxVolume(AudioManager.STREAM_ALARM)
             val now = audio.getStreamVolume(AudioManager.STREAM_ALARM)
-            val floor = if (loud) max else (max * 0.6f).toInt()
-            if (now < floor) {
-                savedVolume = now
-                audio.setStreamVolume(AudioManager.STREAM_ALARM, floor, 0)
+            val want = if (loud) max else Store.volumeSteps(this, max)
+            if (now != want) {
+                if (savedVolume < 0) savedVolume = now
+                audio.setStreamVolume(AudioManager.STREAM_ALARM, want, 0)
             }
         } catch (_: Exception) { }
 

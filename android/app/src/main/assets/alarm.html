@@ -112,12 +112,12 @@ const clock = () => {
   $('#date').textContent = ZH ? `${d.getMonth() + 1}/${d.getDate()} 星期${WD[d.getDay()]}` : `${WD[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`;
 };
 
-/* 第 1～2 個：三位數 + 三位數；第 3～4 個：三個三位數相加；第 5 個起：兩位數 × 個位數 + 三位數 */
+/* 兩位數 + 兩位數；第 3 個起個位數一定會進位，稍微難一點 */
 const r = (a, b) => a + Math.floor(Math.random() * (b - a));
 function puzzle(n) {
-  if (n >= 5) { const a = r(12, 100), b = r(3, 10), c = r(100, 1000); return [`${a}×${b}+${c}`, a * b + c]; }
-  if (n >= 3) { const a = r(100, 1000), b = r(100, 1000), c = r(100, 1000); return [`${a}+${b}+${c}`, a + b + c]; }
-  const a = r(100, 1000), b = r(100, 1000); return [`${a} + ${b}`, a + b];
+  let a, b;
+  do { a = r(11, 100); b = r(11, 100); } while (n >= 3 && (a % 10) + (b % 10) < 10);
+  return [`${a} + ${b}`, a + b];
 }
 
 /* 音波：中間高、兩邊低，每條速度不一樣 */

@@ -239,6 +239,42 @@ class MainActivity : Activity() {
 
     private fun openSetup() = startActivity(Intent(this, SetupActivity::class.java))
 
+    /** 調音量時用選好的鈴聲響 3 秒給你聽。 */
+    private var preview: android.media.MediaPlayer? = null
+    private var previewSaved = -1
+    private val previewStop = Runnable {
+        try { preview?.stop(); preview?.release() } catch (_: Exception) { }
+        preview = null
+        val audio = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+        if (previewSaved >= 0) try { audio.setStreamVolume(android.media.AudioManager.STREAM_ALARM, previewSaved, 0) } catch (_: Exception) { }
+        previewSaved = -1
+    }
+    private val ui = android.os.Handler(android.os.Looper.getMainLooper())
+    private fun previewVolume() {
+        if (AlarmService.current != null) return
+        ui.removeCallbacks(previewStop)
+        try {
+            val audio = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+            val st = android.media.AudioManager.STREAM_ALARM
+            if (previewSaved < 0) previewSaved = audio.getStreamVolume(st)
+            audio.setStreamVolume(st, Store.volumeSteps(this, audio.getStreamMaxVolume(st)), 0)
+            if (preview == null) {
+                val mine = Store.sound(this)
+                val def = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+                    ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+                val mp = android.media.MediaPlayer()
+                mp.setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build())
+                try { mp.setDataSource(this, if (mine.isEmpty()) def else Uri.parse(mine)) }
+                catch (_: Exception) { mp.reset(); mp.setAudioAttributes(android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_ALARM).build()); mp.setDataSource(this, def) }
+                mp.isLooping = true; mp.prepare(); mp.start()
+                preview = mp
+            }
+        } catch (_: Exception) { }
+        ui.postDelayed(previewStop, 3000)
+    }
+
     private fun pickFile(type: String, req: Int) {
         try { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(type), req) }
         catch (_: Exception) { js("toast(" + org.json.JSONObject.quote(tr("這支手機沒有可以選檔案的程式", "No file picker on this phone")) + ")") }
@@ -273,11 +309,13 @@ class MainActivity : Activity() {
     inner class Bridge {
         @JavascriptInterface fun sync() = syncInBackground()
         @JavascriptInterface fun openSetup() = runOnUiThread { this@MainActivity.openSetup() }
-        @JavascriptInterface fun version(): String = "2.2"
+        @JavascriptInterface fun version(): String = "2.3"
         // 鬧鐘的鈴聲、背景圖存在手機上，設定畫面在網頁的「設定 → 手機 App」
         @JavascriptInterface fun alarmLook(): String = org.json.JSONObject()
             .put("sound", if (Store.sound(this@MainActivity).isEmpty()) "" else Store.soundName(this@MainActivity))
-            .put("bg", Store.background(this@MainActivity).isNotEmpty()).toString()
+            .put("bg", Store.background(this@MainActivity).isNotEmpty())
+            .put("volume", Store.volume(this@MainActivity)).toString()
+        @JavascriptInterface fun setVolume(v: Int) = runOnUiThread { Store.setVolume(this@MainActivity, v); previewVolume() }
         @JavascriptInterface fun pickSound() = runOnUiThread { pickFile("audio/*", 41) }
         @JavascriptInterface fun pickBackground() = runOnUiThread { pickFile("image/*", 42) }
         @JavascriptInterface fun resetSound() = Store.setSound(this@MainActivity, "", "")

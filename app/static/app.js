@@ -243,7 +243,7 @@ function morph(html) {
 function taskRow(x, extra = '') {
   const due = x.due ? `<span class="pill ${x.due.slice(0, 10) <= TODAY() && !x.done ? 'red' : ''}">${t('截止 {0}', md(x.due) + ' ' + x.due.slice(11, 16))}</span>` : '';
   const title = x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title)}</a>` : esc(x.title);
-  return `<div class="task ${x.done ? 'done' : ''} ${S.pop === x.id ? 'pop' : ''}">
+  return `<div class="task ${x.done ? 'done' : ''} ${S.pop === x.id ? 'pop' : ''}" data-id="${x.id}" data-own="${x.owner || ''}">
     <button class="chk ${x.done ? 'on' : ''}" onclick="checkTask(this,${x.id},'${own(x)}',${x.done ? 0 : 1})" aria-label="${t('完成')}">
       <span class="ring"></span><span class="fill"></span><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" pathLength="1"/></svg></button>
     <div class="body"><span class="tt">${title}</span>${due || extra || who(x) ? `<div class="meta">${due}${extra}${who(x)}</div>` : ''}</div>
@@ -617,11 +617,11 @@ VIEW.tasks = async () => {
   }
   const tag = k => k.scope === 'week' ? `<span class="pill teal">${t('整週')}</span>` : (k.plan_date && k.plan_date !== td) ? `<span class="pill">${md(k.plan_date)}</span>` : '';
   const group = (name, list) => {
-    const open = list.filter(k => !k.done), done = list.filter(k => k.done);
+    const open = list.filter(k => !k.done).sort((a, b) => (a.pos ?? 1e9) - (b.pos ?? 1e9)), done = list.filter(k => k.done);
     if (name === '逾期' && !open.length) return '';
     if (name === '之後' && !list.length) return '';
     return `<div class="card tg ${name === '逾期' ? 'late' : ''}"><h3>${t(name)}<span class="cnt">${open.length}</span>${done.length ? `<span class="r muted">${t('完成 {0}', done.length)}</span>` : ''}</h3>
-      ${open.map(k => taskRow(k, tag(k))).join('') || `<div class="empty">${name === '今天' ? t('今天沒有待辦') : t('沒有')}</div>`}
+      ${open.length ? `<div class="tlist">${open.map(k => taskRow(k, tag(k))).join('')}</div>` : `<div class="empty">${name === '今天' ? t('今天沒有待辦') : t('沒有')}</div>`}
       ${done.length ? `<div class="donesep"></div>${done.map(k => taskRow(k, tag(k))).join('')}` : ''}</div>`;
   };
   return `${taskForm()}<div class="tgrid">${['逾期', '今天', '本週', '之後'].map(k => group(k, G[k])).join('')}</div>`;
@@ -843,13 +843,13 @@ VIEW.link = async () => {
   const [st, br, ph, pl] = await Promise.all([api('/status'), api('/brief'), api('/alarms/phone'), api('/place')]);
   const url = st.urls[0] || `http://${t('這台電腦的IP')}:${location.port || 80}`;
   const pref = palPref(), th = document.documentElement.dataset.theme;
-  const look = `<div class="card"><h3>${t('外觀')}</h3><dl class="kv">
+  const look = fcard('look', t('外觀'), `<dl class="kv">
       <dt>${t('語言')}</dt><dd><div class="seg sm"><button class="${LANG === 'zh' ? 'on' : ''}" onclick="setLang('zh')">中文</button><button class="${LANG === 'en' ? 'on' : ''}" onclick="setLang('en')">English</button></div></dd>
       <dt>${t('風格')}</dt><dd><div class="seg sm">${[['simple', '簡約'], ['vivid', '炫彩']].map(([v, l]) => `<button class="${styleNow() === v ? 'on' : ''}" onclick="setStyle('${v}')">${t(l)}</button>`).join('')}</div></dd>
       <dt>${t('主題')}</dt><dd><div class="seg sm"><button class="${th === 'dark' ? 'on' : ''}" onclick="if('${th}'!=='dark')toggleTheme().then(render)">${t('暗色')}</button><button class="${th === 'light' ? 'on' : ''}" onclick="if('${th}'!=='light')toggleTheme().then(render)">${t('亮色')}</button></div></dd>
       <dt>${t('色系')}</dt><dd><div class="pals"><button class="palm ${pref === 'auto' ? 'on' : ''}" onclick="setPalPref('auto')" title="${t('每一頁一個顏色，日曆跟著時段和星期變')}">${t('自動搭配')}</button>
         <button class="palm ${pref === 'random' ? 'on' : ''}" onclick="setPalPref('random')" title="${t('每換一頁隨機換一個顏色')}">🎲 ${t('隨機')}</button>
-        ${Object.entries(PAL).map(([k, c]) => `<button class="pal ${pref === k ? 'on' : ''}" onclick="setPalPref('${k}')" title="${t(PAL_NAME[k])}" aria-label="${t(PAL_NAME[k])}" style="background:linear-gradient(135deg,${c.a.join(',')})"></button>`).join('')}</div></dd></dl></div>`;
+        ${Object.entries(PAL).map(([k, c]) => `<button class="pal ${pref === k ? 'on' : ''}" onclick="setPalPref('${k}')" title="${t(PAL_NAME[k])}" aria-label="${t(PAL_NAME[k])}" style="background:linear-gradient(135deg,${c.a.join(',')})"></button>`).join('')}</div></dd></dl>`);
   const member = p => {
     const full = 'token' in p, patch = f => `quietSave(${p.id},${f})`;
     const pick = (field, opts) => `<div class="seg sm">${opts.map(([v, l]) => `<button class="${p[field] === v ? 'on' : ''}" onclick="${patch(`{${field}:'${v}'}`)}">${t(l)}</button>`).join('')}</div>`;
@@ -875,23 +875,22 @@ VIEW.link = async () => {
       <div class="addrow">${P.local && !p.me ? `<button class="btn" onclick="api('/profiles/${p.id}/switch','POST').then(()=>location.reload())">${t('在這台電腦切換成這個人')}</button>` : ''}
         ${P.admin && p.id !== 1 ? `<button class="btn" onclick="pact('/profiles/${p.id}','DELETE')">${t('移除')}</button>` : ''}</div>`}</details>`;
   };
-  const members = `<div class="card"><h3>${P.multi ? t('成員') : t('提醒與共用')}${P.admin ? ` <span class="r"><button class="btn" onclick="askText('${t('新成員的名字')}').then(n=>n&&pact('/profiles','POST',{name:n},'${t('已新增，把存取碼給對方就能用')}'))">＋ ${t('新增成員')}</button></span>` : ''}</h3>
-      ${P.multi ? '' : `<div class="muted" style="margin-bottom:6px">${t('跟另一半或家人共用？新增一位成員：每個人有自己的鬧鐘、待辦和通知，行程和待辦可以選擇「一起」。')}</div>`}
-      ${P.list.map(member).join('')}</div>`;
-  const more = `<div class="card"><h3>${t('進階')}</h3>
+  const members = fcard('members', (P.multi ? t('成員') : t('提醒與共用')) + (P.multi ? '' : qm(t('跟另一半或家人共用？新增一位成員：每個人有自己的鬧鐘、待辦和通知，行程和待辦可以選擇「一起」。'))), `
+      ${P.list.map(member).join('')}`, P.admin ? ` <span class="r"><button class="btn" onclick="event.stopPropagation();askText('${t('新成員的名字')}').then(n=>n&&pact('/profiles','POST',{name:n},'${t('已新增，把存取碼給對方就能用')}'))">＋ ${t('新增成員')}</button></span>` : '');
+  const more = fcard('more', t('進階') + qm(t('設定都在 .env，改完重新啟動才會生效。')), `
     <details class="fold in"><summary>${t('資料來源')} <span class="muted">· ${t('每 {0} 分鐘', st.sync_minutes)}</span></summary>
       ${st.sources.map(k => `<div class="src"><div><b>${esc(k.label)}</b><div class="muted">${k.configured ? esc(k.last || t('還沒執行過')) : t('在 .env 填') + ' ' + k.env.map(e => `<code>${e}</code>`).join(' ')}</div></div>
         ${k.configured ? `<button class="btn" onclick="toast('${t('抓取中…')}');api('/sources/${k.name}/run','POST').then(r=>{toast(r.ok?t('抓到 {0} 筆，新增 {1} 筆',r.total,r.new):r.message);render()})">${t('立刻抓')}</button>` : `<span class="no">○ ${t('未設定')}</span>`}</div>`).join('')}</details>
     <details class="fold in"><summary>${t('每日推播')} <span class="muted">· ${esc(st.morning)} / ${esc(st.evening)}</span></summary>
       <dl class="kv"><dt>${t('早上簡報')}</dt><dd class="num">${esc(st.morning)}</dd><dt>${t('晚上預告')}</dt><dd class="num">${esc(st.evening)}</dd></dl>
       <pre class="brief">${esc(br.text)}</pre>
-      <div class="addrow"><button class="btn" onclick="api('/notify/brief','POST').then(r=>sent(r.result))">${t('現在推播')}</button></div></details>
-    <div class="muted" style="margin-top:14px">${t('設定都在 .env，改完重新啟動才會生效。')}</div></div>`;
-  const phone = `<div class="card"><h3>${t('手機 App')}</h3>${NATIVE
-      ? `<div class="muted">${t('你正在用 Asa App：鬧鐘會在時間到時全螢幕響鈴。')}</div>${phoneLine(ph)}${alarmLook()}
+      <div class="addrow"><button class="btn" onclick="api('/notify/brief','POST').then(r=>sent(r.result))">${t('現在推播')}</button></div></details>`);
+  const phone = fcard('phone', t('手機 App') + qm(NATIVE ? t('你正在用 Asa App：鬧鐘會在時間到時全螢幕響鈴。') + ' ' + t('按「我醒了」只停掉當下這一個；5 分鐘後會確認你還醒著。同一天響越多次，題目越難。')
+      : t('Android 手機裝 Asa App，鬧鐘才會在鎖定畫面響鈴；iPhone 改用推播叫你。')), NATIVE
+      ? `${phoneLine(ph)}${alarmLook()}
          <div class="addrow"><button class="btn" onclick="AsaNative.openSetup()">${t('權限與連線')}</button></div>`
-      : `<div class="muted">${t('Android 手機裝 Asa App，鬧鐘才會在鎖定畫面響鈴；iPhone 改用推播叫你。')}</div>${phoneLine(ph)}
-         <div class="addrow"><a class="btn pri" href="/phone">${t('把 Asa 裝到手機')}</a></div>`}</div>`;
+      : `${phoneLine(ph)}
+         <div class="addrow"><a class="btn pri" href="/phone">${t('把 Asa 裝到手機')}</a></div>`);
   return `<div class="cols"><div class="stack">${placeCard(pl)}${phone}${members}</div><div class="stack">${look}${more}</div></div>`;
 };
 
@@ -1219,12 +1218,11 @@ setTimeout(() => locate(false), 1500);
 function placeCard(pl) {
   const w = pl.weather;
   const ago = pl.ts ? Math.round((Date.now() / 1000 - pl.ts) / 60) : null;
-  return `<div class="card"><h3>${t('個人助理')}</h3>
-    <div class="muted">${t('起床按「我醒了」之後，App 會唸今天的天氣、行程和待辦給你聽；早上的推播簡報也會附上天氣。')}</div>
+  return fcard('place', t('個人助理') + qm(t('起床按「我醒了」之後，App 會唸今天的天氣、行程和待辦給你聽；早上的推播簡報也會附上天氣。')), `
     <dl class="kv"><dt>${t('位置')}</dt><dd>${pl.name ? `📍 ${esc(pl.name)}${ago != null ? ` <span class="muted">· ${ago < 60 ? t('{0} 分鐘前', ago) : t('{0} 小時前', Math.round(ago / 60))}</span>` : ''}` : `<span class="muted">${t('還沒抓到位置')}</span>`}
         <button class="btn ghost sm" onclick="locate(true).then(ok=>{if(ok){toast(t('已更新位置'));render()}})">${t('重新定位')}</button></dd>
       ${w ? `<dt>${t('今天')}</dt><dd>${w.icon} ${esc(w.text)} ${w.lo}～${w.hi}°C${w.rain != null ? ' · ☔ ' + w.rain + '%' : ''}</dd>` : ''}</dl>
-    <div class="addrow"><button class="btn" onclick="showBrief('morning')">☀️ ${t('看早安簡報')}</button><button class="btn ghost" onclick="showBrief('evening')">🌙 ${t('看明日預告')}</button></div></div>`;
+    <div class="addrow"><button class="btn" onclick="showBrief('morning')">☀️ ${t('看早安簡報')}</button><button class="btn ghost" onclick="showBrief('evening')">🌙 ${t('看明日預告')}</button></div>`);
 }
 
 
@@ -1315,8 +1313,73 @@ function alarmLook() {
       <button class="btn" onclick="AsaNative.pickSound()">${t('選音樂')}</button>${a.sound ? `<button class="btn ghost" onclick="AsaNative.resetSound();render()">${t('改回預設')}</button>` : ''}</dd>
     <dt>${t('背景圖')}</dt><dd><span class="${a.bg ? '' : 'muted'}">${a.bg ? '🖼 ' + t('已選照片') : t('預設漸層')}</span>
       <button class="btn" onclick="AsaNative.pickBackground()">${t('選照片')}</button>${a.bg ? `<button class="btn ghost" onclick="AsaNative.resetBackground();render()">${t('改回預設')}</button>` : ''}</dd>
+    ${AsaNative.setVolume ? `<dt>${t('音量')}</dt><dd class="volrow"><input type="range" min="5" max="100" step="5" value="${a.volume ?? 50}" aria-label="${t('音量')}"
+        oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="AsaNative.setVolume(+this.value)"><span class="num">${a.volume ?? 50}%</span></dd>` : ''}
     <dt>${t('試試看')}</dt><dd><button class="btn" onclick="AsaNative.testAlarm();toast(t('10 秒後會響，可以先把螢幕關掉'))">${t('測試鬧鐘')}</button>
-      <button class="btn" onclick="AsaNative.testCheck();toast(t('10 秒後會震動問你還醒著嗎；1 分鐘內沒按就會大聲響'))">${t('測試起床確認')}</button></dd></dl>
-    <div class="muted">${t('按「我醒了」只停掉當下這一個；5 分鐘後會確認你還醒著。同一天響越多次，題目越難。')}</div>`;
+      <button class="btn" onclick="AsaNative.testCheck();toast(t('10 秒後會震動問你還醒著嗎；1 分鐘內沒按就會大聲響'))">${t('測試起床確認')}</button></dd></dl>`;
 }
 window.onNativePicked = () => { toast(t('設好了！可以按「測試鬧鐘」看看')); render(); };
+
+/* ---------- 設定頁：說明收進「?」，每一格可以收起（記在這台裝置上） ---------- */
+const qm = s => `<button type="button" class="qm" onclick="event.stopPropagation();tip(this)" data-tip="${esc(s)}" aria-label="${t('說明')}">?</button>`;
+function tip(b) {
+  const old = document.querySelector('.tipbox');
+  old?.remove();
+  if (old && old._b === b) return;
+  const d = document.createElement('div'), r = b.getBoundingClientRect(), w = Math.min(300, innerWidth - 32);
+  d.className = 'tipbox'; d.textContent = b.dataset.tip; d._b = b;
+  d.style.width = w + 'px';
+  d.style.left = Math.max(16, Math.min(r.left + r.width / 2 - w / 2, innerWidth - 16 - w)) + 'px';
+  d.style.top = r.bottom + 8 + 'px';
+  document.body.append(d);
+  const off = e => { if (e.type === 'scroll' || !e.target.closest?.('.tipbox,.qm')) { d.remove(); removeEventListener('pointerdown', off); removeEventListener('scroll', off, true); } };
+  setTimeout(() => { addEventListener('pointerdown', off); addEventListener('scroll', off, true); }, 0);
+}
+const FOLD_DEF = {look: 1, more: 1};                     // 一開始就收起來的格子
+const shut = k => { const v = store.get('fold:' + k); return v == null ? !!FOLD_DEF[k] : v === '1'; };
+const fcard = (k, title, body, extra = '') => `<div class="card fcard ${shut(k) ? 'shut' : ''}" data-k="${k}">
+  <h3 onclick="foldCard(this)">${title}${extra}<span class="fch" aria-hidden="true"></span></h3><div class="fbody">${body}</div></div>`;
+function foldCard(h) {
+  const c = h.parentElement;
+  c.classList.toggle('shut');
+  store.set('fold:' + c.dataset.k, c.classList.contains('shut') ? '1' : '0');
+}
+
+/* ---------- 待辦：長按一下再拖，就能在同一組裡排順序 ---------- */
+let dragging = false;
+const taskKey = list => [...list.children].map(r => r.dataset.id + '|' + r.dataset.own).join();
+document.addEventListener('pointerdown', e => {
+  const row = e.target.closest?.('.tlist > .task');
+  if (!row || e.button > 0 || e.target.closest('.chk,.x,a,input,button')) return;
+  const list = row.parentElement;
+  if (list.children.length < 2) return;
+  const x0 = e.clientX, y0 = e.clientY;
+  let on = false, base = y0, before = '';
+  const timer = setTimeout(() => {
+    on = dragging = true; before = taskKey(list);
+    row.classList.add('lift'); list.classList.add('sorting'); navigator.vibrate?.(15);
+  }, 380);
+  const move = ev => {
+    if (!on) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 8) end(); return; }
+    const y = ev.clientY;
+    let n;
+    while ((n = row.nextElementSibling) && y > n.getBoundingClientRect().top + n.offsetHeight / 2) { n.after(row); base += n.offsetHeight; }
+    while ((n = row.previousElementSibling) && y < n.getBoundingClientRect().top + n.offsetHeight / 2) { n.before(row); base -= n.offsetHeight; }
+    row.style.transform = `translateY(${y - base}px)`;
+    if (y < 70) scrollBy(0, -10); else if (y > innerHeight - 90) scrollBy(0, 10);
+  };
+  const end = async () => {
+    clearTimeout(timer);
+    removeEventListener('pointermove', move); removeEventListener('pointerup', end); removeEventListener('pointercancel', end);
+    if (!on) return;
+    row.classList.remove('lift'); list.classList.remove('sorting'); row.style.transform = '';
+    setTimeout(() => { dragging = false; }, 60);
+    if (taskKey(list) === before) return;
+    await api('/tasks/order', 'POST', {items: [...list.children].map(r => ({id: +r.dataset.id, owner: +r.dataset.own || null}))});
+    render(true);
+  };
+  addEventListener('pointermove', move); addEventListener('pointerup', end); addEventListener('pointercancel', end);
+});
+document.addEventListener('touchmove', e => { if (dragging) e.preventDefault(); }, {passive: false});
+document.addEventListener('click', e => { if (dragging) { e.preventDefault(); e.stopPropagation(); } }, true);
+document.addEventListener('contextmenu', e => { if (e.target.closest?.('.tlist > .task')) e.preventDefault(); });

@@ -63,9 +63,16 @@ object Store {
     fun soundName(c: Context): String = p(c).getString("soundName", "") ?: ""
     fun setSound(c: Context, uri: String, name: String) { p(c).edit().putString("sound", uri).putString("soundName", name).apply() }
 
+    /** 鬧鐘音量（佔手機鬧鐘音量最大值的百分比）。被別人叫、起床確認沒按時一律最大聲。 */
+    fun volume(c: Context): Int = p(c).getInt("volume", 50)
+    fun setVolume(c: Context, v: Int) { p(c).edit().putInt("volume", v.coerceIn(5, 100)).apply() }
+
     /** 鬧鐘背景圖：使用者從手機裡選的照片（空 = 原本的漸層）。 */
     fun background(c: Context): String = p(c).getString("bg", "") ?: ""
     fun setBackground(c: Context, uri: String) { p(c).edit().putString("bg", uri).apply() }
+
+    /** 鬧鐘音量要調成幾格（至少 1 格）。 */
+    fun volumeSteps(c: Context, max: Int): Int = Math.round(max * volume(c) / 100f).coerceIn(1, max)
 
     /** 今天響過幾個鬧鐘（越晚題目越難）。 */
     fun ringsToday(c: Context): Int {

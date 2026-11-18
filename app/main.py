@@ -530,6 +530,15 @@ def edit_task(id_: int, body: dict = Body(...), owner: int | None = None):
     return {"ok": True}
 
 
+@app.post("/api/tasks/order")
+def order_tasks(body: dict = Body(...)):
+    """長按拖曳排序：items = [{id, owner?}]，照順序寫進 pos。"""
+    for i, it in enumerate(body.get("items") or []):
+        with owned(it.get("owner"), "tasks", int(it["id"])):
+            db.run("UPDATE tasks SET pos = ? WHERE id = ?", (i, int(it["id"])))
+    return {"ok": True}
+
+
 @app.delete("/api/tasks/{id_}")
 def del_task(id_: int, owner: int | None = None):
     with owned(owner, "tasks", id_):

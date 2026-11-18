@@ -50,7 +50,7 @@ const EN = {
   '分': 'min', '個': '', '那天沒有行程時從幾點開始響；留空就不排鬧鐘': 'Start time on days with nothing scheduled; empty = no alarms',
   '從第一個到最後一個共 {0} 分鐘': '{0} min from first to last', '套用': 'Apply', '已套用': 'Applied', '新增規則': 'New rule', '新規則': 'New rule',
   '起床紀錄': 'Wake-up log',
-  '已過': 'Past', '權限與連線': 'Permissions & connection', '鬧鐘鈴聲': 'Alarm sound', '系統預設': 'System default', '選音樂': 'Pick music',
+  '已過': 'Past', '說明': 'Help', '音量': 'Volume', '權限與連線': 'Permissions & connection', '鬧鐘鈴聲': 'Alarm sound', '系統預設': 'System default', '選音樂': 'Pick music',
   '改回預設': 'Reset', '背景圖': 'Background', '已選照片': 'Photo selected', '預設漸層': 'Default gradient', '選照片': 'Pick photo', '試試看': 'Try it',
   '測試鬧鐘': 'Test alarm', '測試起床確認': 'Test wake check', '10 秒後會響，可以先把螢幕關掉': 'Rings in 10 seconds — try turning the screen off',
   '10 秒後會震動問你還醒著嗎；1 分鐘內沒按就會大聲響': 'In 10 seconds it vibrates and asks if you\'re awake; ignore it for a minute and it rings loudly',
