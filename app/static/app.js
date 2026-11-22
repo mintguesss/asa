@@ -1509,6 +1509,21 @@ function imCell(raw) {
   }
   return {title: s.replace(/\s+/g, ' ').trim() || raw.trim(), location: loc};
 }
+/* 兩段字有多像（0～1，看共同的字） */
+function imSim(a, b) {
+  if (a === b) return 1;
+  const A = [...a.replace(/\s/g, '')], B = [...b.replace(/\s/g, '')];
+  if (!A.length || !B.length) return 0;
+  const m = {}; A.forEach(ch => m[ch] = (m[ch] || 0) + 1);
+  let k = 0; B.forEach(ch => { if (m[ch] > 0) { m[ch]--; k++; } });
+  return 2 * k / (A.length + B.length);
+}
+/* 一堆寫法裡出現最多次的；都只出現一次就挑跟其他最像的 */
+function imMost(list) {
+  const n = {}; list.forEach(v => n[v] = (n[v] || 0) + 1);
+  const score = v => n[v] * 100 + list.reduce((a, w) => a + imSim(v, w), 0);
+  return [...new Set(list)].sort((a, b) => score(b) - score(a))[0];
+}
 function imEvents() {
   const out = [];
   for (let d = 0; d < 7; d++) {
@@ -1516,9 +1531,9 @@ function imEvents() {
     for (let r = 0; r <= IM.rows; r++) {
       const v = r < IM.rows ? (IM.cells[`${r}_${d}`] || '').trim() : '';
       const c = v ? imCell(v) : null;
-      if (cur && c && c.title === cur.title) { cur.last = r; cur.locs.push(c.location); continue; }
+      if (cur && c && imSim(c.title, cur.title) >= 0.75) { cur.last = r; cur.locs.push(c.location); cur.titles.push(c.title); continue; }
       if (cur) out.push(cur);
-      cur = c ? {title: c.title, locs: [c.location], d, first: r, last: r} : null;
+      cur = c ? {title: c.title, titles: [c.title], locs: [c.location], d, first: r, last: r} : null;
     }
   }
   // OCR 認出「I1-404」和「11-404」其實是同一間：有認出 I 的那個才是對的
@@ -1527,7 +1542,7 @@ function imEvents() {
   return out.map(e => {
     const n = {}; e.locs.filter(Boolean).map(fix).forEach(l => n[l] = (n[l] || 0) + 1);   // 地點取出現最多次的
     const location = Object.keys(n).sort((a, b) => n[b] - n[a])[0] || '';
-    return {title: e.title, location, weekday: e.d, start_time: imTime(e.first), end_time: hhmm(mins(imTime(e.last)) + +IM.len)};
+    return {title: imMost(e.titles), location, weekday: e.d, start_time: imTime(e.first), end_time: hhmm(mins(imTime(e.last)) + +IM.len)};
   });
 }
 function openImport() {
@@ -1635,6 +1650,77 @@ function findGrid(img) {
   const filled = (x, y, X, Y) => { let n = 0, all = 0; for (let yy = y + 3; yy < Y - 3; yy += 2) for (let xx = x + 3; xx < X - 3; xx += 2) { all++; const i = (yy * w + xx) * 4; n += (px[i] + px[i + 1] + px[i + 2]) / 3 < 150; } return n / Math.max(1, all) > 0.004; };
   return {k, cols, rows, head, cells: rows.map(([a, b]) => cols.map(([s, e]) => filled(s, a, e, b)))};
 }
+/* 切出一格：灰階、深底自動反白、拉對比，找出字的範圍和每行字高 */
+const mkCanvas = (w, h) => Object.assign(document.createElement('canvas'), {width: w, height: h});
+function imPrep(img, G, x, y, X, Y) {
+  const K = 1 / G.k, ins = Math.max(2, Math.round(3 * K));
+  const sx = Math.round(x * K) + ins, sy = Math.round(y * K) + ins, sw = Math.round((X - x) * K) - 2 * ins, sh = Math.round((Y - y) * K) - 2 * ins;
+  if (sw < 8 || sh < 8) return null;
+  const g = mkCanvas(sw, sh).getContext('2d', {willReadFrequently: true});
+  g.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+  const p = g.getImageData(0, 0, sw, sh).data, n = sw * sh, v = new Float32Array(n), hist = new Uint32Array(256);
+  let sum = 0;
+  for (let i = 0; i < n; i++) { v[i] = p[i * 4] * .3 + p[i * 4 + 1] * .59 + p[i * 4 + 2] * .11; sum += v[i]; }
+  if (sum / n < 128) for (let i = 0; i < n; i++) v[i] = 255 - v[i];          // 白字深底（表頭）→ 反過來
+  for (let i = 0; i < n; i++) hist[v[i] | 0]++;
+  let bg = 0; for (let i = 1; i < 256; i++) if (hist[i] > hist[bg]) bg = i;    // 最常見的亮度＝底色
+  let lo = 0, acc = 0; while (lo < 255 && (acc += hist[lo]) < n * 0.003) lo++;
+  if (bg - lo < 50) return null;                                             // 沒有字
+  const ink = new Uint8Array(n); let cnt = 0, bx0 = sw, by0 = sh, bx1 = -1, by1 = -1;
+  for (let i = 0; i < n; i++) {
+    v[i] = Math.max(0, Math.min(255, (v[i] - lo) / (bg - lo) * 255));
+    if (v[i] < 128) { ink[i] = 1; cnt++; const xx = i % sw, yy = (i / sw) | 0; if (xx < bx0) bx0 = xx; if (xx > bx1) bx1 = xx; if (yy < by0) by0 = yy; if (yy > by1) by1 = yy; }
+  }
+  if (cnt < 12) return null;
+  const lines = []; let st = -1, gap = 0;                                    // 每一行字的高度
+  for (let yy = by0; yy <= by1 + 1; yy++) {
+    let on = false; if (yy <= by1) for (let xx = bx0; xx <= bx1; xx++) if (ink[yy * sw + xx]) { on = true; break; }
+    if (on) { if (st < 0) st = yy; gap = 0; } else if (st >= 0 && (++gap >= 2 || yy > by1)) { lines.push(yy - gap - st + 1); st = -1; gap = 0; }
+  }
+  const hs = lines.filter(h => h >= 5).sort((a, b) => a - b), hL = hs.length ? hs[hs.length >> 1] : by1 - by0 + 1;
+  const SW = 24, SH = 12, sig = new Float32Array(SW * SH), sn = new Uint16Array(SW * SH), bw = bx1 - bx0 + 1, bh = by1 - by0 + 1;
+  for (let yy = 0; yy < bh; yy++) for (let xx = 0; xx < bw; xx++) {         // 縮圖（區塊平均），用來找長得一樣的格子
+    const k = ((yy * SH / bh) | 0) * SW + ((xx * SW / bw) | 0); sig[k] += v[(by0 + yy) * sw + bx0 + xx]; sn[k]++;
+  }
+  for (let k = 0; k < sig.length; k++) sig[k] /= sn[k] || 1;
+  return {v, sw, box: [bx0, by0, bw, bh], hL, sig};
+}
+/* 整理好的格子 → 給 OCR 的圖：字高統一約 40px、黑字白底、四周留白 */
+function imCanvas(P) {
+  const [bx, by, bw, bh] = P.box, src = mkCanvas(bw, bh), sg = src.getContext('2d'), d = sg.createImageData(bw, bh);
+  for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) { const o = (y * bw + x) * 4, g = P.v[(by + y) * P.sw + bx + x]; d.data[o] = d.data[o + 1] = d.data[o + 2] = g; d.data[o + 3] = 255; }
+  sg.putImageData(d, 0, 0);
+  const z = Math.max(0.4, Math.min(4, 40 / P.hL)), c = mkCanvas(Math.round(bw * z) + 48, Math.round(bh * z) + 48), g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  g.imageSmoothingQuality = 'high'; g.drawImage(src, 24, 24, bw * z, bh * z);
+  return c;
+}
+const imDist = (A, B) => {                                                   // 兩格差多少；小於 10 就是同一門課重複出現
+  if (Math.abs(A.box[2] - B.box[2]) > 4 || Math.abs(A.box[3] - B.box[3]) > 4) return 255;
+  let d = 0; for (let i = 0; i < A.sig.length; i++) d += Math.abs(A.sig[i] - B.sig[i]);
+  return d / A.sig.length;
+};
+/* OCR 出來的一格字 → 「課名 (地點)」：去掉老師那一行、斷行、雜點 */
+function imTidy(text) {
+  let s = text.replace(/[|!]/g, 'I').replace(/\r/g, ''), loc = '';
+  const m = s.match(/[（(]\s*([^()（）]+?)\s*[)）]?\s*$/) || s.match(/[（(]\s*([^()（）]+?)\s*[)）]/);
+  if (m) { loc = m[1].replace(/\s+/g, ''); s = s.replace(m[0], '\n'); }
+  let lines = s.split('\n').map(l => l.trim()).filter(Boolean), dropped = false;
+  const si = lines.findIndex(l => l.includes('/'));
+  if (si >= 0) {
+    const before = lines[si].split('/')[0].trim();
+    lines = lines.slice(0, si);
+    if (before && lines.length && before.replace(/\s/g, '').length <= 4) dropped = true;   // 「/」那行只有老師名字
+    else if (before) lines.push(before);
+  }
+  let t = lines.join('\n').replace(/(?<=[一-鿿])[\s'"`_.,，。、:;~·・]+(?=[一-鿿])/g, '').replace(/\s+/g, ' ').trim();
+  if (si >= 0 && !dropped) {                                                 // 課名和老師在同一行：去掉最後 2～3 個字
+    const cjk = t.match(/\s?[一-鿿]{2,3}$/);
+    if (cjk && t.replace(/\s/g, '').length - cjk[0].trim().length >= 3) t = t.slice(0, -cjk[0].length).trim();
+  }
+  t = t.replace(/^[^\w一-鿿(（]+|[^\w一-鿿)）]+$/g, '');
+  return t ? (loc ? `${t} (${loc})` : t) : (loc ? `(${loc})` : '');
+}
 async function imOcr(given) {
   const file = given instanceof Blob ? given : await pickImage();
   if (!file) return;
@@ -1642,39 +1728,47 @@ async function imOcr(given) {
   try { img = await loadImg(URL.createObjectURL(file)); } catch { return drawImport(t('讀不了這張圖')); }
   const G = findGrid(img);
   if (!G) return drawImport(t('看不出表格的格線。可以改用「貼上文字」或直接點格子填。'));
-  const todo = G.cells.flatMap((row, r) => row.map((on, c) => on ? [r, c] : null)).filter(Boolean);
+  const todo = G.cells.flatMap((row, r) => row.map((on, c) => on ? [r, c] : null)).filter(Boolean)
+    .map(([r, c]) => ({r, c, P: imPrep(img, G, G.cols[c][0], G.rows[r][0], G.cols[c][1], G.rows[r][1])})).filter(x => x.P);
   drawImport(`⏳ ${t('找到 {0} 欄 × {1} 列，正在辨識文字（第一次要下載辨識資料，約 10～30 秒）…', G.cols.length, G.rows.length)}`);
   let T;
   try { T = await loadTesseract(); } catch { return drawImport(t('下載辨識工具失敗，請確認有網路，或改用「貼上文字」。')); }
   const worker = await T.createWorker(['chi_tra', 'eng']);
   await worker.setParameters({tessedit_pageseg_mode: '6', preserve_interword_spaces: '1'});
-  const crop = (x, y, X, Y, inv) => {                 // 從原圖切出那一格，放大兩倍、四周留白
-    const K = 1 / G.k, sx = x * K, sy = y * K, sw = (X - x) * K, sh = (Y - y) * K, z = Math.max(1, 90 / sh, 2);
-    const c = Object.assign(document.createElement('canvas'), {width: Math.round(sw * z) + 40, height: Math.round(sh * z) + 40}), g = c.getContext('2d');
-    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
-    if (inv) g.filter = 'invert(1) grayscale(1) contrast(1.6)';
-    g.drawImage(img, sx, sy, sw, sh, 20, 20, sw * z, sh * z);
-    return c;
-  };
-  const clean = s => s.replace(/\n+/g, ' ').replace(/(?<=[一-鿿])\s+(?=[一-鿿])/g, '').replace(/\s+/g, ' ').trim();
+  const read = async P => { try { return (await worker.recognize(imCanvas(P))).data.text; } catch { return ''; } };
   // 星期：讀表頭；讀不到就照欄數猜（7 欄從星期日開始，其他從星期一）
   let wd = G.cols.map(() => null);
   if (G.head) for (let i = 0; i < G.cols.length; i++) {
-    try { const {data} = await worker.recognize(crop(G.cols[i][0], G.head[0], G.cols[i][1], G.head[1] + 1, true)); wd[i] = wdOfText(clean(data.text)); } catch { /* 跳過 */ }
+    const P = imPrep(img, G, G.cols[i][0], G.head[0], G.cols[i][1], G.head[1] + 1);
+    if (P) wd[i] = wdOfText((await read(P)).replace(/\s+/g, ''));
   }
-  if (wd.filter(v => v !== null).length < 2) wd = G.cols.map((_, i) => (G.cols.length >= 7 ? i + 6 : i) % 7);
-  else wd = wd.map((v, i) => v ?? ((wd.find(x => x !== null) + i - wd.findIndex(x => x !== null) + 7) % 7));
+  // 星期一定是連續的：用多數表頭算出第一欄是星期幾，個別讀錯的（例如「六」讀成「一」）跟著修正
+  const offs = wd.map((v, i) => v === null ? null : (v - i + 70) % 7).filter(v => v !== null);
+  const off = offs.length >= 2 ? +imMost(offs.map(String)) : (G.cols.length >= 7 ? 6 : 0);
+  wd = G.cols.map((_, i) => (i + off) % 7);
+  // 長得一樣的格子分成一組，每組最多讀 3 格，取多數決，整組用同一個答案
+  const groups = [];
+  for (const x of todo) {
+    let best = null, bd = 10;
+    for (const g of groups) { const d = imDist(g[0].P, x.P); if (d < bd) { bd = d; best = g; } }
+    best ? best.push(x) : groups.push([x]);
+  }
+  const total = groups.reduce((a, g) => a + Math.min(3, g.length), 0);
   IM.cells = {};
   IM.rows = Math.max(G.rows.length, 1);
-  let n = 0;
-  for (const [r, c] of todo) {
-    $('#imbody .immsg') && ($('#imbody .immsg').textContent = `⏳ ${t('辨識中 {0}/{1}', ++n, todo.length)}`);
-    try {
-      const {data} = await worker.recognize(crop(G.cols[c][0], G.rows[r][0], G.cols[c][1], G.rows[r][1], false));
-      const v = clean(data.text);
-      if (v) IM.cells[`${r}_${wd[c]}`] = v;
-    } catch { /* 這格跳過 */ }
+  let n = 0, reads = [];
+  for (const g of groups) {
+    const got = [];
+    for (const x of g.slice(0, 3)) {
+      $('#imbody .immsg') && ($('#imbody .immsg').textContent = `⏳ ${t('辨識中 {0}/{1}', ++n, total)}`);
+      const v = imTidy(await read(x.P));
+      if (v) got.push(v);
+    }
+    if (got.length) { const v = imMost(got); reads.push(...got); g.forEach(x => IM.cells[`${x.r}_${wd[x.c]}`] = v); }
   }
+  // 「I1-404」常被讀成「11-404」：只要有任何一次讀出 I，就全部用有 I 的寫法
+  const key = v => v.replace(/I/g, '1'), nI = v => (v.match(/I/g) || []).length;
+  for (const k in IM.cells) IM.cells[k] = reads.filter(v => key(v) === key(IM.cells[k])).sort((a, b) => nI(b) - nI(a))[0] || IM.cells[k];
   await worker.terminate();
   URL.revokeObjectURL(img.src);
   drawImport(t('辨識完成：欄位是 {0}。字可能有錯，點格子就能改；星期對不上就按 ◀ ▶。', wd.map(v => WDI[v]).join(' ')));
