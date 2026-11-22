@@ -91,31 +91,61 @@ def when(value: str, now: datetime | None = None) -> datetime | None:
         return None
 
 
+SERIES_DATE = re.compile(r"\d{1,2}\s*[/月]\s*\d{1,2}\s*日?|第\s*\d+\s*[週周次]|(?i:week)\s*\d+")
+ONCE = re.compile(r"報告|簡報|(?i:presentation|slides?)")
+
+
+def series_key(title: str) -> str:
+    """「11/26 心得單繳交」「12/3 心得單繳交」→ 同一個系列「心得單繳交」。"""
+    return re.sub(r"[\s_\-－:：]+", "", SERIES_DATE.sub("", title)).lower()
+
+
 def homeworks(client: httpx.Client, cid: str, cname: str) -> list[dict]:
-    """只收還沒交、還沒過期限、期限在半年內的作業（期限好幾年後的通常是常設的繳交區，不是作業）。"""
+    """只收還沒交、還沒過期限、期限在半年內的作業（期限好幾年後的通常是常設的繳交區，不是作業）。
+
+    每週重複的作業（標題只差日期，例如「11/26 心得單」「12/3 心得單」）只收最近要交的那一份，
+    上一份過了期限，下一份才會進來。報告、簡報這類只要交過其中一週，整個系列就不再收。
+    """
     page = client.get(f"{base()}/course/homeworkList/{cid}").text
     _dump(f"homework_{cid}", page)
     rows, now = _rows(page), datetime.now()
     col = _col(rows, "期限", "繳交", "Deadline", "Submitted")
     i_due, i_done = col.get("期限", col.get("Deadline")), col.get("繳交", col.get("Submitted"))
-    out = []
+    found = []
     for row in rows:
         m = re.search(r"<a[^>]+href=['\"]([^'\"]*/course/homework/(\d+)[^'\"]*)['\"][^>]*>(.*?)</a>", row, re.S)
         if not m:
             continue
         cells = _cells(row)
-        if i_done is not None and i_done < len(cells) and "fa-check" in cells[i_done]:
-            continue                                       # 已經交了
-        due = when(text_of(cells[i_due])) if i_due is not None and i_due < len(cells) else None
-        if due and (due < now or due > now + timedelta(days=180)):
-            continue                                       # 已經過期限，或是常設的繳交區
-        out.append({
-            "ext_id": f"eeclass-hw-{m.group(2)}", "kind": "homework", "course": cname,
-            "title": text_of(m.group(3)), "due": due.strftime("%Y-%m-%dT%H:%M") if due else None,
-            "link": m.group(1) if m.group(1).startswith("http") else base() + m.group(1),
-            "source": "eeclass",
+        title = text_of(m.group(3))
+        found.append({
+            "id": m.group(2), "title": title, "href": m.group(1),
+            "done": i_done is not None and i_done < len(cells) and "fa-check" in cells[i_done],
+            "due": when(text_of(cells[i_due])) if i_due is not None and i_due < len(cells) else None,
+            "series": series_key(title) if SERIES_DATE.search(title) else None,
         })
-    return out
+    groups: dict[str, list[dict]] = {}
+    for h in found:
+        if h["series"]:
+            groups.setdefault(h["series"], []).append(h)
+    keep = []
+    for h in found:
+        if h["done"] or (h["due"] and (h["due"] < now or h["due"] > now + timedelta(days=180))):
+            continue                                       # 交了、過期限了，或是常設的繳交區
+        g = groups.get(h["series"]) if h["series"] else None
+        if g and len(g) > 1:
+            if ONCE.search(h["title"]) and any(x["done"] for x in g):
+                continue                                   # 報告／簡報：交過一週就好
+            nxt = min((x for x in g if not x["done"] and x["due"] and x["due"] >= now), key=lambda x: x["due"], default=None)
+            if nxt is not h:
+                continue                                   # 每週的：只收下一份
+        keep.append(h)
+    return [{
+        "ext_id": f"eeclass-hw-{h['id']}", "kind": "homework", "course": cname,
+        "title": h["title"], "due": h["due"].strftime("%Y-%m-%dT%H:%M") if h["due"] else None,
+        "link": h["href"] if h["href"].startswith("http") else base() + h["href"],
+        "source": "eeclass",
+    } for h in keep]
 
 
 BULLETIN_DAYS = int(os.getenv("EECLASS_BULLETIN_DAYS", "14"))
