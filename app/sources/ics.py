@@ -18,6 +18,8 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
+from . import conf
+
 NAME = "ics"
 LABEL = "iCalendar 訂閱（Google 日曆、Moodle、Canvas…）"
 ENV = ["ICS_EVENT_URLS", "ICS_DEADLINE_URLS"]
@@ -27,7 +29,7 @@ def _feeds() -> list[tuple[str, str, str]]:
     """回傳 [(kind, 名稱, 網址)]。"""
     out = []
     for env, kind in (("ICS_EVENT_URLS", "event"), ("ICS_DEADLINE_URLS", "homework")):
-        for part in os.getenv(env, "").split(","):
+        for part in conf.get(env).split(","):
             part = part.strip()
             if not part:
                 continue

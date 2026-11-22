@@ -35,6 +35,7 @@ ASA_DEMO=1 ./run.sh        # Windows: set ASA_DEMO=1 && run.bat
   - iCalendar feeds (Google Calendar, Outlook, Moodle, Canvas, …), including repeating events
   - trust a source? `AUTO_APPROVE=ics` skips the review step for it
   - eeClass LMS (used by many universities in Taiwan) — unsubmitted homework with deadlines, and announcements from the last 14 days
+  - each member enters their own school account under *Settings → Advanced → Data sources*; results go to their own inbox
   - anything else: `POST /api/inbox`, or write a ~30-line plugin in `app/sources/`
 - **Notifications** — Discord, LINE, Telegram, ntfy, or any webhook: evening preview, morning brief, new inbox items.
 

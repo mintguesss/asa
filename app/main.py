@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 
 from . import closures, core, db, demo, i18n, insights, notify, profiles, quick, social, sources, wake, weather
+from .sources import conf as src_conf
 from .i18n import tr
 
 ROOT = Path(__file__).resolve().parent
@@ -198,9 +199,14 @@ def job_source(name: str) -> dict:
 
 
 def job_sources() -> None:
-    for mod in sources.ALL:
-        if mod.configured():
-            job_source(mod.NAME)
+    """每位成員用自己的帳號抓，結果進他自己的審核頁、推播給他自己。"""
+    for p in each_profile():
+        for mod in sources.ALL:
+            if mod.configured():
+                try:
+                    job_source(mod.NAME)
+                except Exception as e:  # noqa: BLE001  一個人失敗不影響其他人
+                    print(f"[sources] {p['name']} {mod.NAME} 失敗: {e}")
 
 
 def hm(env: str, default: str) -> tuple[int, int]:
@@ -239,9 +245,9 @@ async def lifespan(_: FastAPI):
         # 停班停課：前一晚 19–22 點陸續公告，也可能凌晨才宣布，所以晚上和清晨各查幾次
         sched.add_job(closures.job, "cron", hour="19-23", minute="5,35", args=[1])
         sched.add_job(closures.job, "cron", hour="0-7", minute="10,40", args=[0])
-    if any(m.configured() for m in sources.ALL):
-        sched.add_job(job_sources, "interval", minutes=int(os.getenv("SYNC_INTERVAL_MINUTES", "30")),
-                      next_run_time=datetime.now() + timedelta(seconds=20))
+    # 每位成員隨時可以在設定頁填帳號，所以一律排上；沒人設定時這個工作什麼都不做
+    sched.add_job(job_sources, "interval", minutes=int(os.getenv("SYNC_INTERVAL_MINUTES", "30")),
+                  next_run_time=datetime.now() + timedelta(seconds=20))
     sched.start()
     yield
     sched.shutdown(wait=False)
@@ -859,7 +865,7 @@ def status():
     return {
         "channels": [c | {"label": tr(c["label"])} for c in notify.channels()], "lang": i18n.default(),
         "sources": [{"name": m.NAME, "label": tr(m.LABEL), "env": m.ENV, "configured": m.configured(),
-                     "last": db.kv_get(f"src_{m.NAME}_last")} for m in sources.ALL],
+                     "fields": src_conf.view(m.ENV), "last": db.kv_get(f"src_{m.NAME}_last")} for m in sources.ALL],
         "sync_minutes": int(os.getenv("SYNC_INTERVAL_MINUTES", "30")),
         "phone_last_sync": db.kv_get("phone_last_sync"),
         "closure": {"area": closures.area(), "last": db.kv_get("closure_last")},
@@ -871,6 +877,16 @@ def status():
 @app.post("/api/sources/{name}/run")
 def source_run(name: str):
     return job_source(name)
+
+
+@app.post("/api/sources/{name}/config")
+def source_config(name: str, body: dict = Body(...)):
+    """目前這位成員自己的來源設定（學校帳密…）；留空不變，只填空白 = 清掉。"""
+    mod = sources.BY_NAME.get(name)
+    if not mod:
+        raise HTTPException(404)
+    src_conf.save(mod.ENV, body.get("values") or {})
+    return {"ok": True, "configured": mod.configured(), "fields": src_conf.view(mod.ENV)}
 
 
 # ---------- 成員 ----------

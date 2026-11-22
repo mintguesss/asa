@@ -870,10 +870,10 @@ VIEW.link = async () => {
   };
   const members = fcard('members', (P.multi ? t('成員') : t('提醒與共用')) + (P.multi ? '' : qm(t('跟另一半或家人共用？新增一位成員：每個人有自己的鬧鐘、待辦和通知，行程和待辦可以選擇「一起」。'))), `
       ${P.list.map(member).join('')}`, P.admin ? ` <span class="r"><button class="btn" onclick="event.stopPropagation();askText('${t('新成員的名字')}').then(n=>n&&pact('/profiles','POST',{name:n},'${t('已新增，把存取碼給對方就能用')}'))">＋ ${t('新增成員')}</button></span>` : '');
-  const more = fcard('more', t('進階') + qm(t('設定都在 .env，改完重新啟動才會生效。')), `
+  const more = fcard('more', t('進階') + qm(t('資料來源的帳號在這裡填，每個人各填各的；其他設定在 .env，改完重新啟動才會生效。')), `
     <details class="fold in"><summary>${t('資料來源')} <span class="muted">· ${t('每 {0} 分鐘', st.sync_minutes)}</span></summary>
-      ${st.sources.map(k => `<div class="src"><div><b>${esc(k.label)}</b><div class="muted">${k.configured ? esc(k.last || t('還沒執行過')) : t('在 .env 填') + ' ' + k.env.map(e => `<code>${e}</code>`).join(' ')}</div></div>
-        ${k.configured ? `<button class="btn" onclick="toast('${t('抓取中…')}');api('/sources/${k.name}/run','POST').then(r=>{toast(r.ok?t('抓到 {0} 筆，新增 {1} 筆',r.total,r.new):r.message);render()})">${t('立刻抓')}</button>` : `<span class="no">○ ${t('未設定')}</span>`}</div>`).join('')}</details>
+      ${st.sources.map(srcBlock).join('')}
+      <div class="muted" style="margin-top:6px">${t('每個人填自己的帳號，抓到的東西只會進自己的審核頁。')}</div></details>
     <details class="fold in"><summary>${t('每日推播')} <span class="muted">· ${esc(st.morning)} / ${esc(st.evening)}</span></summary>
       <dl class="kv"><dt>${t('早上簡報')}</dt><dd class="num">${esc(st.morning)}</dd><dt>${t('晚上預告')}</dt><dd class="num">${esc(st.evening)}</dd></dl>
       <pre class="brief">${esc(br.text)}</pre>
@@ -1492,6 +1492,26 @@ async function pickWebBg() {
   if (data) { setWebBg(data); toast(t('背景換好了')); render(); }
 }
 applyBg();
+
+/* ---------- 設定頁：資料來源（學校帳號、iCal），每位成員各填自己的 ---------- */
+const SRC_LABEL = {EECLASS_URL: '學校 eeClass 網址', EECLASS_ACCOUNT: '帳號（通常是學號）', EECLASS_PASSWORD: '密碼',
+  ICS_EVENT_URLS: '行程的 iCal 網址', ICS_DEADLINE_URLS: '截止日的 iCal 網址'};
+function srcBlock(k) {
+  const run = `toast('${t('抓取中…')}');api('/sources/${k.name}/run','POST').then(r=>{toast(r.ok?t('抓到 {0} 筆，新增 {1} 筆',r.total,r.new):r.message);render()})`;
+  const fields = (k.fields || []).map(f => `<label class="srcf"><span>${t(SRC_LABEL[f.key] || f.key)}</span>
+    <input class="field" name="${f.key}" autocomplete="off" ${f.secret ? 'type="password"' : `value="${esc(f.value)}"`}
+      placeholder="${f.secret && f.set ? t('已設定（留空不變）') : t(SRC_LABEL[f.key] || f.key)}"></label>`).join('');
+  return `<details class="src fold in"><summary><b>${esc(k.label)}</b> ${k.configured ? `<span class="chip on">${t('已設定')}</span>` : `<span class="no">○ ${t('未設定')}</span>`}
+      <div class="muted">${k.configured ? esc(k.last || t('還沒執行過')) : ''}</div></summary>
+    <form onsubmit="event.preventDefault();srcSave('${k.name}',this)">${fields}
+      <div class="addrow"><button class="btn pri">${t('儲存')}</button>${k.configured ? `<button type="button" class="btn" onclick="${run}">${t('立刻抓')}</button>` : ''}</div>
+      <div class="muted">${t('留空的欄位不會變動；要清掉某一欄，填一個空白再儲存。帳密只存在這台電腦。')}</div></form></details>`;
+}
+async function srcSave(name, form) {
+  const r = await api(`/sources/${name}/config`, 'POST', {values: formData(form)});
+  toast(r.configured ? t('已儲存，按「立刻抓」試試看') : t('已儲存，還有欄位沒填'));
+  render();
+}
 
 /* ---------- 匯入課表／班表：截圖辨識、貼上文字、直接填格子 ---------- */
 const IM = {cells: {}, first: '08:00', len: 50, gap: 10, rows: 14, replace: false};

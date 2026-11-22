@@ -102,7 +102,7 @@ App 介面跟著手機語言：中文顯示中文，其他語言顯示英文。
 抓到的東西一律先進「審核」，核准後才會變成待辦或行程。
 
 - **iCalendar 訂閱**：`.env` 的 `ICS_EVENT_URLS`（核准後變行程）和 `ICS_DEADLINE_URLS`（核准後變有截止時間的待辦）。Google 日曆、Outlook、Moodle、Canvas 都能匯出這種網址。重複事件會自動展開（預設只展開未來 14 天，`ICS_REPEAT_DAYS_AHEAD` 可調）。
-- **eeClass**：填 `EECLASS_URL`（你學校的 eeClass 網址）、`EECLASS_ACCOUNT`、`EECLASS_PASSWORD`。只收還沒交、還沒過期限的作業（含截止時間），和最近 14 天的公告。每週重複的作業（例如「11/26 心得單」「12/3 心得單」）只收下一份，過了期限才換下一週；報告、簡報類交過一週就整組不再收（`EECLASS_BULLETIN_DAYS` 可改）。已用中央大學實測；其他學校可以先執行 `python -m app.sources.eeclass --debug` 看抓到什麼。
+- **eeClass**：在網頁版「設定 → 進階 → 資料來源」填學校網址、帳號、密碼，每位成員各填自己的，抓到的作業只進自己的審核頁、推播給自己（第一位成員也可以寫在 `.env` 的 `EECLASS_URL`、`EECLASS_ACCOUNT`、`EECLASS_PASSWORD`）。只收還沒交、還沒過期限的作業（含截止時間），和最近 14 天的公告。每週重複的作業（例如「11/26 心得單」「12/3 心得單」）只收下一份，過了期限才換下一週；報告、簡報類交過一週就整組不再收（`EECLASS_BULLETIN_DAYS` 可改）。已用中央大學實測；其他學校可以先執行 `python -m app.sources.eeclass --debug` 看抓到什麼。
 - **不想每筆都審核**：`AUTO_APPROVE=ics`（或 `ics,eeclass`）會讓那個來源的新項目直接加進行事曆／待辦，公告仍然要審核。
 - **其他系統**：直接 `POST /api/inbox`，或在 `app/sources/` 加一個模組（格式寫在 `app/sources/__init__.py`）。
 
@@ -122,7 +122,7 @@ App 介面跟著手機語言：中文顯示中文，其他語言顯示英文。
 - **行程提醒**：每個人可以設定在行程開始前幾分鐘收到推播（新成員預設 30 分鐘）。
 - **通知管道**：每位成員在設定頁填自己的 Discord、LINE、Telegram、ntfy 或 Webhook。iPhone 建議用 ntfy 或 Telegram。
 - 在架 Asa 的那台電腦上，設定頁可以直接切換成另一位成員；其他裝置是誰由存取碼決定。只有第一位成員或那台電腦能新增、移除成員。
-- 資料來源（eeClass、iCalendar）和停班停課目前只會進第一位成員那邊。
+- 停班停課目前只會進第一位成員那邊。
 
 沒有密碼和註冊，所以請只跟信任的人共用，也不要把服務開到公開網路上。
 

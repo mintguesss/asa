@@ -7,7 +7,8 @@ eeClass 是台灣很多大學在用的教學平台，把 EECLASS_URL 換成你�
    第一次使用請先跑：  python -m app.sources.eeclass --debug
    它會把抓到的頁面存到 data/eeclass_debug/，解析結果印在畫面上，但不會寫進佇列。
 
-.env：EECLASS_URL / EECLASS_ACCOUNT / EECLASS_PASSWORD（帳密只存在這台電腦）。
+帳密在網頁版「設定 → 進階 → 資料來源」填，每位成員各填自己的；第一位成員也可以寫在 .env：
+EECLASS_URL / EECLASS_ACCOUNT / EECLASS_PASSWORD（帳密只存在這台電腦）。
 """
 import html
 import os
@@ -17,6 +18,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
+
+from . import conf
 
 NAME = "eeclass"
 LABEL = "eeClass 教學平台"
@@ -29,7 +32,7 @@ TAG = re.compile(r"<[^>]+>")
 
 
 def base() -> str:
-    return os.getenv("EECLASS_URL", "").strip().rstrip("/")
+    return conf.get("EECLASS_URL").rstrip("/")
 
 
 def text_of(fragment: str) -> str:
@@ -185,13 +188,13 @@ def _dump(name: str, page: str) -> None:
 
 
 def configured() -> bool:
-    return bool(base() and os.getenv("EECLASS_ACCOUNT", "").strip() and os.getenv("EECLASS_PASSWORD", "").strip())
+    return bool(base() and conf.get("EECLASS_ACCOUNT") and conf.get("EECLASS_PASSWORD").strip())
 
 
 def collect() -> list[dict]:
     """登入並抓回所有科目的作業與公告。"""
     with httpx.Client(headers=UA, follow_redirects=True, timeout=30) as client:
-        login(client, os.environ["EECLASS_ACCOUNT"].strip(), os.environ["EECLASS_PASSWORD"])
+        login(client, conf.get("EECLASS_ACCOUNT"), conf.get("EECLASS_PASSWORD"))
         items: list[dict] = []
         for cid, cname in courses(client).items():
             for fn in (homeworks, bulletins):

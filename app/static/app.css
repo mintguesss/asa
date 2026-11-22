@@ -1075,3 +1075,9 @@ body.hasbg #aurora{display:none}
 .imrows{margin-top:6px}
 .imprev{display:flex;flex-direction:column;gap:3px;margin-top:10px;font-size:13px;max-height:140px;overflow:auto}
 .imrep{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13.5px}
+
+/* 設定頁：資料來源的帳號欄位 */
+details.src > summary { cursor: pointer; }
+details.src > summary .muted { font-weight: 400; margin-top: 2px; }
+.srcf { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 13px; }
+.srcf .field { width: 100%; }

@@ -6,7 +6,7 @@
     LABEL = "My School LMS"       # 顯示在設定頁的名稱
     ENV   = ["MYSCHOOL_TOKEN"]    # 需要在 .env 填的變數（顯示用）
 
-    def configured() -> bool: ...          # .env 填好了嗎
+    def configured() -> bool: ...          # 設定填好了嗎（用 conf.get(key) 讀，每位成員各一份）
     def collect() -> list[dict]: ...       # 回傳項目清單
 
 每個項目是一個 dict：
