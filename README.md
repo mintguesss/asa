@@ -34,7 +34,7 @@ ASA_DEMO=1 ./run.sh        # Windows: set ASA_DEMO=1 && run.bat
 - **Review inbox** — sources drop items in; nothing reaches your calendar until you approve it.
   - iCalendar feeds (Google Calendar, Outlook, Moodle, Canvas, …), including repeating events
   - trust a source? `AUTO_APPROVE=ics` skips the review step for it
-  - eeClass LMS (used by many universities in Taiwan)
+  - eeClass LMS (used by many universities in Taiwan) — unsubmitted homework with deadlines, and announcements from the last 14 days
   - anything else: `POST /api/inbox`, or write a ~30-line plugin in `app/sources/`
 - **Notifications** — Discord, LINE, Telegram, ntfy, or any webhook: evening preview, morning brief, new inbox items.
 
@@ -120,7 +120,7 @@ FastAPI · SQLite · APScheduler · vanilla JS/CSS (no build step).
 
 ## Status
 
-Early. The Android app builds, and the Docker image builds and starts, but the app has not been tested on many devices. The eeClass source has not been verified against a real account, and the closure detection has only been tested against the page's no-closure state plus simulated notices — issues and PRs welcome.
+Early. The Android app builds, and the Docker image builds and starts, but the app has not been tested on many devices. The eeClass source has been tested against one university (NCU) only, and the closure detection has only been tested against the page's no-closure state plus simulated notices — issues and PRs welcome.
 
 ## Credits
 

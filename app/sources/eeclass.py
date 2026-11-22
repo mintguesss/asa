@@ -3,7 +3,7 @@
 eeClass 是台灣很多大學在用的教學平台，把 EECLASS_URL 換成你學校的網址即可
 （例：https://ncueeclass.ncu.edu.tw）。
 
-⚠️ 這支程式是依登入頁結構和 eeClass 的常見網址規則寫的，還沒有用真實帳號驗證過。
+已用中央大學（ncueeclass.ncu.edu.tw）實際測過；其他學校的版面可能略有不同。
    第一次使用請先跑：  python -m app.sources.eeclass --debug
    它會把抓到的頁面存到 data/eeclass_debug/，解析結果印在畫面上，但不會寫進佇列。
 
@@ -13,6 +13,7 @@ import html
 import os
 import re
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -25,7 +26,6 @@ DEBUG_DIR = Path(__file__).resolve().parents[2] / "data" / "eeclass_debug"
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Asa/1.0"}
 
 TAG = re.compile(r"<[^>]+>")
-DATE = re.compile(r"(\d{4})[-/](\d{2})[-/](\d{2})(?:\s+(\d{2}):(\d{2}))?")
 
 
 def base() -> str:
@@ -57,7 +57,7 @@ def courses(client: httpx.Client) -> dict[str, str]:
     _dump("dashboard", page)
     out: dict[str, str] = {}
     for cid, inner in re.findall(r"<a[^>]+href=['\"](?:https?://[^'\"]*)?/course/(\d+)['\"][^>]*>(.*?)</a>", page, re.S):
-        name = text_of(inner)
+        name = re.sub(r"(?<=[一-鿿Ⅰ-ⅿ）)])\s+[A-Za-z][\w &,.:()'/-]*$", "", text_of(inner))   # 「軟體工程Ⅰ Software Engineering I」→ 只留中文
         if name and len(name) > len(out.get(cid, "")):
             out[cid] = name
     return out
@@ -67,37 +67,80 @@ def _rows(page: str) -> list[str]:
     return re.findall(r"<tr[^>]*>(.*?)</tr>", page, re.S)
 
 
+def _cells(row: str) -> list[str]:
+    return re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", row, re.S)
+
+
+def _col(rows: list[str], *names: str) -> dict[str, int]:
+    """表頭（第一列）的欄名 → 位置。"""
+    head = [text_of(c) for c in _cells(rows[0])] if rows else []
+    return {n: head.index(n) for n in names if n in head}
+
+
+def when(value: str, now: datetime | None = None) -> datetime | None:
+    """「2026-11-10」「11-18 23:59」「2024-10-08」→ datetime；eeClass 只有今年的日期不寫年份。"""
+    now = now or datetime.now()
+    m = re.search(r"(?:(\d{4})[-/])?(\d{1,2})[-/](\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?", value)
+    if not m:
+        return None
+    y, mo, d, h, mi = m.groups()
+    hm = (int(h), int(mi)) if h else (23, 59)
+    try:
+        return datetime(int(y) if y else now.year, int(mo), int(d), *hm)
+    except ValueError:
+        return None
+
+
 def homeworks(client: httpx.Client, cid: str, cname: str) -> list[dict]:
+    """只收還沒交、還沒過期限、期限在半年內的作業（期限好幾年後的通常是常設的繳交區，不是作業）。"""
     page = client.get(f"{base()}/course/homeworkList/{cid}").text
     _dump(f"homework_{cid}", page)
+    rows, now = _rows(page), datetime.now()
+    col = _col(rows, "期限", "繳交", "Deadline", "Submitted")
+    i_due, i_done = col.get("期限", col.get("Deadline")), col.get("繳交", col.get("Submitted"))
     out = []
-    for row in _rows(page):
+    for row in rows:
         m = re.search(r"<a[^>]+href=['\"]([^'\"]*/course/homework/(\d+)[^'\"]*)['\"][^>]*>(.*?)</a>", row, re.S)
         if not m:
             continue
-        dates = [f"{y}-{mo}-{d}T{h or '23'}:{mi or '59'}" for y, mo, d, h, mi in DATE.findall(text_of(row))]
+        cells = _cells(row)
+        if i_done is not None and i_done < len(cells) and "fa-check" in cells[i_done]:
+            continue                                       # 已經交了
+        due = when(text_of(cells[i_due])) if i_due is not None and i_due < len(cells) else None
+        if due and (due < now or due > now + timedelta(days=180)):
+            continue                                       # 已經過期限，或是常設的繳交區
         out.append({
             "ext_id": f"eeclass-hw-{m.group(2)}", "kind": "homework", "course": cname,
-            "title": text_of(m.group(3)), "due": max(dates) if dates else None,
+            "title": text_of(m.group(3)), "due": due.strftime("%Y-%m-%dT%H:%M") if due else None,
             "link": m.group(1) if m.group(1).startswith("http") else base() + m.group(1),
             "source": "eeclass",
         })
     return out
 
 
+BULLETIN_DAYS = int(os.getenv("EECLASS_BULLETIN_DAYS", "14"))
+
+
 def bulletins(client: httpx.Client, cid: str, cname: str) -> list[dict]:
+    """只收最近 EECLASS_BULLETIN_DAYS 天（預設 14 天）的公告。"""
     page = client.get(f"{base()}/course/bulletin/{cid}").text
     _dump(f"bulletin_{cid}", page)
+    rows, since = _rows(page), datetime.now() - timedelta(days=BULLETIN_DAYS)
+    col = _col(rows, "公告日期", "Date")
+    i_date = col.get("公告日期", col.get("Date"))
     out = []
-    for row in _rows(page):
+    for row in rows:
         m = re.search(r"<a[^>]+(?:href|data-url)=['\"]([^'\"]*bulletin[^'\"]*?(\d+)[^'\"]*)['\"][^>]*>(.*?)</a>", row, re.S)
         if not m or not text_of(m.group(3)):
             continue
-        link = html.unescape(m.group(1))
+        cells = _cells(row)
+        posted = when(text_of(cells[i_date])) if i_date is not None and i_date < len(cells) else None
+        if posted and posted < since:
+            continue
         out.append({
             "ext_id": f"eeclass-bu-{m.group(2)}", "kind": "announcement", "course": cname,
             "title": text_of(m.group(3)), "due": None,
-            "link": link if link.startswith("http") else base() + link, "source": "eeclass",
+            "link": f"{base()}/course/bulletin/{cid}", "source": "eeclass",   # 公告本身的網址帶一次性的驗證碼，改連到課程公告頁
         })
     return out
 
