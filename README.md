@@ -72,7 +72,7 @@ Then open `https://<your-machine>.<tailnet>.ts.net:8443` on the phone, enter the
 
 ### Start with Windows
 
-Run `install_autostart.bat` (asks for administrator rights once). It registers a Task Scheduler task that starts Asa in the background at boot — before login, no console window, restarted if it crashes, no password stored. `uninstall_autostart.bat` removes it.
+Run `install_autostart.bat` (asks for administrator rights once). It registers a Task Scheduler task that starts Asa in the background at boot — before login, no console window, restarted if it crashes, no password stored. Output goes to `data/server.log`. No administrator rights? Run `powershell -ExecutionPolicy Bypass -File autostart.ps1 -Logon` instead: it starts Asa when you log in. `uninstall_autostart.bat` removes either.
 
 ### Access
 

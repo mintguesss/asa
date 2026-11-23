@@ -143,6 +143,8 @@ Discord、LINE、Telegram、ntfy、自訂 Webhook，在 `.env` 填哪個就送�
 
 雙擊 `install_autostart.bat`，Windows 會跳出一次系統管理員權限的確認。之後每次開機 Asa 都會在背景自動啟動：不用先登入、沒有黑色視窗、意外結束會自動重試，也不會儲存你的 Windows 密碼。
 
+伺服器的輸出會寫到 `data/server.log`。不想（或不能）用系統管理員權限的話，改執行 `powershell -ExecutionPolicy Bypass -File autostart.ps1 -Logon`：不會跳權限確認，改成登入 Windows 後才在背景啟動。
+
 要取消就雙擊 `uninstall_autostart.bat`。想看它的狀態，開「工作排程器」找名為 `Asa` 的工作。
 
 ## 介面素材來源
