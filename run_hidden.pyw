@@ -20,4 +20,5 @@ load_dotenv(root / ".env")
 
 import uvicorn  # noqa: E402
 
-uvicorn.run("app.main:app", host="0.0.0.0", port=int(os.getenv("PORT", "8787")))
+# HOST=127.0.0.1：只讓這台電腦自己（和 Tailscale serve 轉進來的連線）連得到
+uvicorn.run("app.main:app", host=os.getenv("HOST", "0.0.0.0").strip() or "0.0.0.0", port=int(os.getenv("PORT", "8787")))
