@@ -198,8 +198,9 @@ object Scheduler {
         val msg = try {
             val js = JSONObject(Api.get(c, "/api/phone/alarms"))
             val arr = js.getJSONArray("alarms")
-            // 電腦已經知道我醒了：它會把那幾個鬧鐘關掉，清單裡還有的就是後來新加或重新打開的
-            if (js.optBoolean("awake")) Store.setSkipped(c, emptySet())
+            // 已經過了的「關掉」紀錄清掉，還沒到的保留（電腦不知道手機關掉了哪幾個）
+            val nowKey = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"))
+            Store.setSkipped(c, Store.skipped(c).filter { it > nowKey }.toSet())
             val fresh = ArrayList<AlarmItem>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
@@ -226,7 +227,38 @@ object Scheduler {
         am(c).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + SYNC_INTERVAL, pi)
     }
 
-    /** 「我醒了」：不再讓別人叫我起床。後面的鬧鐘不取消，照樣會響。 */
+    /** 今天還沒響的鬧鐘（不含已經關掉的）。 */
+    fun restToday(c: Context): List<AlarmItem> {
+        val d = java.time.LocalDate.now().toString()
+        return upcoming(c).filter { it.date == d }
+    }
+
+    /** 今天被關掉、還沒到時間的鬧鐘。 */
+    fun skippedToday(c: Context): List<AlarmItem> {
+        val d = java.time.LocalDate.now().toString()
+        val now = System.currentTimeMillis()
+        val skip = Store.skipped(c)
+        return Store.alarms(c).filter { it.date == d && it.millis > now && it.key in skip }
+    }
+
+    /** 關掉今天剩下的鬧鐘：只在手機上做，不用連電腦；明天起照常。回傳關掉幾個。 */
+    fun skipToday(c: Context): Int {
+        val rest = restToday(c)
+        for (a in rest) cancel(c, a)
+        Store.setSkipped(c, Store.skipped(c) + rest.map { it.key })
+        if (rest.isNotEmpty()) Api.log(c, "skip_rest", rest.first())
+        return rest.size
+    }
+
+    /** 反悔：把今天關掉的鬧鐘排回去。 */
+    fun unskipToday(c: Context): Int {
+        val back = skippedToday(c)
+        Store.setSkipped(c, Store.skipped(c) - back.map { it.key }.toSet())
+        scheduleAll(c)
+        return back.size
+    }
+
+    /** 「我醒了」：不再讓別人叫我起床。後面的鬧鐘不取消，照樣會響（要關掉另外選）。 */
     fun markAwake(c: Context) {
         stopNudgeWatch(c)
     }

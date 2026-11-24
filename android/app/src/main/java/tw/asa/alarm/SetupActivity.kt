@@ -24,6 +24,7 @@ import kotlin.concurrent.thread
 class SetupActivity : Activity() {
     private lateinit var nextTime: TextView
     private lateinit var nextInfo: TextView
+    private lateinit var skipBtn: android.widget.Button
     private lateinit var list: TextView
     private lateinit var status: TextView
     private lateinit var perms: LinearLayout
@@ -61,6 +62,13 @@ class SetupActivity : Activity() {
         status.setPadding(0, Ui.dp(this, 12), 0, 0)
         listCard.addView(status)
         listCard.addView(Ui.button(this, tr("立即同步", "Sync now"), true) { syncNow() })
+        skipBtn = Ui.button(this, "", false) {
+            val msg = if (Scheduler.restToday(this).isNotEmpty()) Scheduler.skipToday(this).let { n -> tr("已關掉今天剩下的 $n 個鬧鐘，明天照常", "Turned off $n alarms for today") }
+            else Scheduler.unskipToday(this).let { n -> tr("已恢復 $n 個鬧鐘", "Restored $n alarms") }
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+            refresh()
+        }
+        listCard.addView(skipBtn)
         root.addView(listCard)
 
         // 權限
@@ -177,6 +185,11 @@ class SetupActivity : Activity() {
             list.text = up.take(24).joinToString("\n") { "${it.date.substring(5)}　${it.time}　${it.label}" }
         }
         status.text = Store.status(this)
+        val on = Scheduler.restToday(this).size
+        val off = Scheduler.skippedToday(this).size
+        skipBtn.visibility = if (on + off > 0) android.view.View.VISIBLE else android.view.View.GONE
+        skipBtn.text = if (on > 0) tr("關掉今天剩下的 $on 個鬧鐘", "Turn off today's $on remaining alarms")
+        else tr("恢復今天關掉的 $off 個鬧鐘", "Restore today's $off alarms")
         refreshPerms()
     }
 

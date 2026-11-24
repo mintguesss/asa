@@ -96,6 +96,7 @@ class AlarmActivity : Activity() {
                 .put("check", checkMode)
                 .put("n", Store.ringsToday(c).coerceAtLeast(1))
                 .put("rest", rest.size).put("next", rest.firstOrNull()?.time ?: "")
+                .put("today", if (AlarmService.isTest) 0 else Scheduler.restToday(c).size)
                 .put("sound", if (Store.sound(c).isEmpty()) "" else Store.soundName(c))
                 .put("bg", photo())
                 .put("since", System.currentTimeMillis() - started)
@@ -107,11 +108,16 @@ class AlarmActivity : Activity() {
             Toast.makeText(this@AlarmActivity, msg, Toast.LENGTH_SHORT).show()
         }
 
-        /** 答對了：停掉這一個，5 分鐘後確認還醒著，唸今天的簡報。 */
-        @JavascriptInterface fun awake() = runOnUiThread {
+        /** 答對了：停掉這一個，5 分鐘後確認還醒著，唸今天的簡報。skipRest = 今天剩下的也一起關掉（不用連電腦）。 */
+        @JavascriptInterface fun awake() = awake2(false)
+        @JavascriptInterface fun awake2(skipRest: Boolean) = runOnUiThread {
             val c = this@AlarmActivity
             val item = AlarmService.current
             Scheduler.markAwake(c)
+            if (skipRest && !AlarmService.isTest) {
+                val n = Scheduler.skipToday(c)
+                if (n > 0) Toast.makeText(c, tr("今天剩下的 $n 個鬧鐘已關掉，明天照常", "Turned off today's $n remaining alarms; tomorrow as usual"), Toast.LENGTH_LONG).show()
+            }
             Api.log(c, "awake", item)
             if (!AlarmService.isTest) Scheduler.scheduleCheck(c)
             stopService(Intent(c, AlarmService::class.java))

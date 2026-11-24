@@ -36,6 +36,24 @@ class MainActivity : Activity() {
     private lateinit var web: WebView
     private lateinit var errBox: LinearLayout
     private lateinit var errText: TextView
+    private lateinit var skipBtn: android.widget.Button
+
+    /** 「關掉今天剩下的鬧鐘」：連不上電腦也能按。 */
+    private fun skipLabel() {
+        val on = Scheduler.restToday(this).size
+        val off = Scheduler.skippedToday(this).size
+        skipBtn.visibility = if (on + off > 0) View.VISIBLE else View.GONE
+        skipBtn.text = if (on > 0) tr("關掉今天剩下的 $on 個鬧鐘", "Turn off today's $on remaining alarms")
+        else tr("恢復今天關掉的 $off 個鬧鐘", "Restore today's $off alarms")
+    }
+
+    private fun toggleSkip() {
+        val msg = if (Scheduler.restToday(this).isNotEmpty())
+            Scheduler.skipToday(this).let { n -> tr("已關掉今天剩下的 $n 個鬧鐘，明天照常", "Turned off $n alarms for today") }
+        else Scheduler.unskipToday(this).let { n -> tr("已恢復 $n 個鬧鐘", "Restored $n alarms") }
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
+        skipLabel()
+    }
     private var fileCb: ValueCallback<Array<Uri>>? = null
     private var loadedFor = ""
     private var splash: SunriseView? = null
@@ -178,6 +196,8 @@ class MainActivity : Activity() {
         errBox.addView(errText)
         errBox.addView(Ui.center(Ui.text(this, tr("鬧鐘不受影響：上次同步到的鬧鐘照樣會響。", "Alarms still ring: the last synced alarms stay scheduled."), 14f, Ui.MUTE)))
         errBox.addView(Ui.button(this, tr("重試", "Retry"), true) { load(true) })
+        skipBtn = Ui.button(this, "", false) { toggleSkip() }
+        errBox.addView(skipBtn)
         errBox.addView(Ui.button(this, tr("App 設定", "App settings"), false) { openSetup() })
         errBox.visibility = View.GONE
         root.addView(errBox, FrameLayout.LayoutParams(-1, -1))
@@ -227,6 +247,7 @@ class MainActivity : Activity() {
         hideSplash()
         web.visibility = View.INVISIBLE
         errText.text = Store.url(this) + "\n" + msg
+        skipLabel()
         errBox.visibility = View.VISIBLE
     }
 
