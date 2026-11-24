@@ -679,10 +679,15 @@ def del_alarm(id_: int):
 
 # ---------- 手機端（存取碼由 guard 檢查）----------
 def phone_list(now: datetime) -> list[dict]:
-    """手機該排的鬧鐘：今天還沒到的 + 明天的所有啟用鬧鐘。"""
+    """手機該排的鬧鐘：今天還沒到的 + 之後 PHONE_DAYS_AHEAD 天（預設 7 天）的所有啟用鬧鐘。
+
+    多給幾天是為了電腦關機或斷線好幾天時，手機照樣會響；每次同步都會用最新的清單蓋掉。
+    """
     hm_now = now.strftime("%H:%M")
     out = [a for a in core.plan(today()) if a["enabled"] and a["time"] > hm_now]
-    return out + [a for a in core.plan(tomorrow()) if a["enabled"]]
+    for n in range(1, max(1, int(os.getenv("PHONE_DAYS_AHEAD", "7"))) + 1):
+        out += [a for a in core.plan((date.today() + timedelta(days=n)).isoformat()) if a["enabled"]]
+    return out
 
 
 @app.get("/api/phone/alarms")
