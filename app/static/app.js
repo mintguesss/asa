@@ -807,7 +807,7 @@ VIEW.weekly = async () => {
   const days = [0, 1, 2, 3, 4, 5, 6].map(d => w.filter(k => k.weekday === d));
   const form = `<form class="card tadd" onsubmit="event.preventDefault();addWeekly(this)">
       <div class="tadd-top"><input class="field big" type="text" name="title" placeholder="${t('名稱（課、班、健身…）')}" required autocomplete="off"><button class="btn pri">${t('加入')}</button></div>
-      <div class="tadd-opts"><div class="wdpick">${WD1.map((c, i) => `<button type="button" onclick="this.classList.toggle('on')" data-d="${i}">${c}</button>`).join('')}</div>
+      <div class="tadd-opts"><div class="wdpick">${WD1.map((c, i) => `<button type="button" onclick="wdTog(this)" data-d="${i}">${c}</button>`).join('')}</div>
         <span class="trange"><input class="field" type="time" name="start_time" required><span class="muted">–</span><input class="field" type="time" name="end_time"></span>
         <input class="field" type="text" name="location" placeholder="${t('地點')}" style="max-width:140px"></div>
       <div class="muted hint">${t('可以一次選好幾天，例如每週二、四的課。')}</div></form>
@@ -821,6 +821,13 @@ VIEW.weekly = async () => {
   return form + `<div class="week">${days.map((list, d) => `<div class="col ${d === today ? 'today' : ''}"><div class="hd"><b>${WDN[d]}</b></div>
       ${timeline(list.map(e => ({...e, time: e.start_time, source: 'tt'})), {...rg, pxm: 0.7})}</div>`).join('')}</div>`;
 };
+/* 點星期：換成一顆新的按鈕，手機 WebView 有時只改 class 不會重畫，看起來像沒點到 */
+function wdTog(b) {
+  const n = b.cloneNode(true);
+  n.classList.toggle('on');
+  n.setAttribute('aria-pressed', n.classList.contains('on'));
+  b.replaceWith(n);
+}
 async function addWeekly(f) {
   const v = formData(f), ds = [...f.querySelectorAll('.wdpick .on')].map(b => +b.dataset.d);
   if (!ds.length) return toast(t('請至少選一天'));
