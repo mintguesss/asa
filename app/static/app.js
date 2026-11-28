@@ -230,13 +230,15 @@ function morph(html) {
 }
 
 /* ---------- 共用元件 ---------- */
+const TK = {};                                                               // 畫出來的待辦，點了要編輯時用
 function taskRow(x, extra = '') {
+  TK[x.id + '|' + (x.owner || '')] = x;
   const due = x.due ? `<span class="pill ${x.due.slice(0, 10) <= TODAY() && !x.done ? 'red' : ''}">${t('截止 {0}', md(x.due) + ' ' + x.due.slice(11, 16))}</span>` : '';
   const title = x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title)}</a>` : esc(x.title);
   return `<div class="task ${x.done ? 'done' : ''} ${S.pop === x.id ? 'pop' : ''}" data-id="${x.id}" data-own="${x.owner || ''}">
     <button class="chk ${x.done ? 'on' : ''}" onclick="checkTask(this,${x.id},'${own(x)}',${x.done ? 0 : 1})" aria-label="${t('完成')}">
       <span class="ring"></span><span class="fill"></span><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" pathLength="1"/></svg></button>
-    <div class="body"><span class="tt">${title}</span>${due || extra || who(x) ? `<div class="meta">${due}${extra}${who(x)}</div>` : ''}</div>
+    <div class="body" onclick="if(!event.target.closest('a'))editTask('${x.id}|${x.owner || ''}')"><span class="tt">${title}</span>${due || extra || who(x) ? `<div class="meta">${due}${extra}${who(x)}</div>` : ''}</div>
     <button class="x" onclick="act('/tasks/${x.id}${own(x)}','DELETE')" aria-label="${t('刪除')}">✕</button></div>`;
 }
 
@@ -685,6 +687,43 @@ function taskForm() {
       ${shareBox()}
     </div></form>`;
 }
+/* 編輯待辦：點一下待辦的文字 */
+function editTask(key) {
+  const x = TK[key]; if (!x) return;
+  let box = document.querySelector('.sheetwrap');
+  if (!box) {
+    box = document.createElement('div'); box.className = 'ask sheetwrap';
+    box.onclick = ev => { if (ev.target === box) closeSheet(true); };
+    document.body.append(box);
+    document.addEventListener('keydown', sheetKey);
+  }
+  const day = x.plan_date || (x.due || '').slice(0, 10) || TODAY();
+  box.innerHTML = `<div class="askbox sheet" role="dialog" aria-modal="true">
+    <div class="sh-h"><b>${t('編輯待辦')}</b><button class="x" onclick="closeSheet(true)" aria-label="${t('關閉')}">✕</button></div>
+    <form class="evadd evedit" onsubmit="event.preventDefault();saveTask(this,'${key}')">
+      <input class="field big" name="title" value="${esc(x.title)}" required autocomplete="off" placeholder="${t('名稱')}">
+      <div class="evrow"><label class="lf"><span>${t('哪天做')}</span><input class="field" type="date" name="plan_date" value="${esc(day)}" required></label>
+        <label class="share"><input type="checkbox" name="week" ${x.scope === 'week' ? 'checked' : ''}> ${t('這週內就好')}</label></div>
+      <div class="evrow"><label class="lf"><span>${t('截止')}</span><input class="field" type="datetime-local" name="due" value="${esc((x.due || '').slice(0, 16))}"></label></div>
+      <input class="field" name="link" value="${esc(x.link || '')}" placeholder="${t('連結（可留空）')}" autocomplete="off">
+      ${P.multi && !x.owner ? `<label class="share"><input type="checkbox" name="shared" ${x.shared ? 'checked' : ''}> ${t('一起')}</label>` : ''}
+      <div class="askrow"><button type="button" class="btn danger" onclick="delTask('${key}')">${t('刪除')}</button>
+        <button type="button" class="btn" onclick="closeSheet(true)">${t('取消')}</button><button class="btn pri">${t('儲存')}</button></div></form></div>`;
+  fixInputs(box);
+}
+async function saveTask(f, key) {
+  const x = TK[key], v = formData(f);
+  if (!v.title.trim()) return;
+  const body = {title: v.title.trim(), scope: f.week.checked ? 'week' : 'day', plan_date: v.plan_date || TODAY(),
+    due: v.due || null, link: (v.link || '').trim() || null};
+  if (f.shared) body.shared = f.shared.checked ? 1 : 0;
+  await api(`/tasks/${x.id}${own(x)}`, 'PATCH', body);
+  toast(t('已儲存')); closeSheet();
+}
+async function delTask(key) {
+  const x = TK[key];
+  await api(`/tasks/${x.id}${own(x)}`, 'DELETE'); toast(t('已刪除')); closeSheet();
+}
 function whenPick(b) { b.closest('form').querySelector('[data-for=pick]').hidden = b.dataset.w !== 'pick'; }
 async function addTask(f) {
   const v = formData(f), w = f.querySelector('.when .on').dataset.w, td = TODAY();
@@ -751,7 +790,7 @@ function ruleCard(r) {
     <div class="wds">${WD1.map((c, i) => `<button class="wd ${wds.includes(String(i)) ? 'on' : ''}" title="${WDN[i]}" onclick="act('/alarms/rules/${r.id}','PATCH',{weekdays:'${tog(i)}'})">${c}</button>`).join('')}</div>
     <div class="seg sm"><button class="${follow ? 'on' : ''}" onclick="act('/alarms/rules/${r.id}','PATCH',{anchor:'first_event'})">${t('跟著行程')}</button><button class="${follow ? '' : 'on'}" onclick="act('/alarms/rules/${r.id}','PATCH',{anchor:'fixed'})">${t('固定時間')}</button></div>
     <div class="knobs">${follow ? num('提前', 'lead_minutes', r.lead_minutes, '分', 0) : time('開始', 'fixed_time', r.fixed_time || '07:00')}${num('間隔', 'interval_minutes', r.interval_minutes, '分')}${num('數量', 'count', r.count, '個', 1, 30)}
-      ${follow ? time('沒行程時', 'fixed_time', r.fixed_time, t('那天沒有行程時從幾點開始響；留空就不排鬧鐘')) : ''}</div>
+      ${follow ? time('沒行程時', 'fixed_time', r.fixed_time, t('那天沒有行程時從幾點開始響，有行程也不會比這個時間晚；留空就不排鬧鐘')) : ''}</div>
     <button class="dots" onclick="const o=this.parentNode.classList.toggle('open');o?S.ruleOpen.add(${r.id}):S.ruleOpen.delete(${r.id})" title="${t('點一下看每一個的時間')}">${Array.from({length: n}, (_, i) => (i ? `<s style="width:${gap}px"></s>` : '') + `<i style="--i:${i}"></i>`).join('')}<span class="num">${t('{0} 分鐘', span)} ⌄</span></button>
     <div class="clip dclip"><div><div class="dtimes">${Array.from({length: r.count}, (_, i) => follow ? `<span class="chip num">${t('前 {0} 分', r.lead_minutes - i * r.interval_minutes)}</span>`
       : `<span class="chip num">${hhmm((mins(r.fixed_time || '07:00') + i * r.interval_minutes) % 1440)}</span>`).join('')}

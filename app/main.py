@@ -536,6 +536,8 @@ def add_task(body: dict = Body(...)):
 @app.patch("/api/tasks/{id_}")
 def edit_task(id_: int, body: dict = Body(...), owner: int | None = None):
     data = pick(body, TASK_F)
+    if data.get("scope") == "week" and data.get("plan_date"):
+        data["plan_date"] = core.week_monday(data["plan_date"])
     if "done" in data:
         data["done_at"] = datetime.now().isoformat(timespec="minutes") if data["done"] else None
     if "shared" in data:
@@ -686,7 +688,14 @@ def phone_list(now: datetime) -> list[dict]:
     hm_now = now.strftime("%H:%M")
     out = [a for a in core.plan(today()) if a["enabled"] and a["time"] > hm_now]
     for n in range(1, max(1, int(os.getenv("PHONE_DAYS_AHEAD", "7"))) + 1):
-        out += [a for a in core.plan((date.today() + timedelta(days=n)).isoformat()) if a["enabled"]]
+        d = (date.today() + timedelta(days=n)).isoformat()
+        day = [a for a in core.plan(d) if a["enabled"]]
+        if db.kv_get("plan_reason:" + d) is None:        # 規則還沒排到這天（平常只排到明天）：先照規則算好給手機
+            have = {a["time"] for a in day}
+            day += [{"date": d, "time": t, "label": "起床", "enabled": 1}
+                    for t in core.compute_alarms(d)[0] if t not in have]
+            day.sort(key=lambda a: a["time"])
+        out += day
     return out
 
 

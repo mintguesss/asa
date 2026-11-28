@@ -83,6 +83,11 @@ def compute_alarms(d: str) -> tuple[list[str], str]:
             t = datetime.fromisoformat(f"{d}T{ev['time']}")
             first = t - timedelta(minutes=rule["lead_minutes"])
             why = tr("{time} {title}，提前 {lead} 分鐘開始", time=ev["time"], title=ev["title"], lead=rule["lead_minutes"])
+            # 「沒行程時」的時間也是最晚起床時間：行程很晚（例如晚上 6 點）也不會睡到比沒行程還晚
+            late = datetime.fromisoformat(f"{d}T{rule['fixed_time']}") if rule["fixed_time"] else None
+            if late and late < first:
+                first = late
+                why = tr("{time} {title} 比較晚，照「沒行程時」的 {fixed} 起床", time=ev["time"], title=ev["title"], fixed=rule["fixed_time"])
     if first is None and rule["fixed_time"]:
         first = datetime.fromisoformat(f"{d}T{rule['fixed_time']}")
         why = tr("固定時間 {time}" if rule["anchor"] == "fixed" else "當天沒有行程，用備用時間 {time}", time=rule["fixed_time"])

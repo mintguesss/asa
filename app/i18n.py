@@ -46,6 +46,7 @@ EN = {
     "{time} {title}，提前 {lead} 分鐘開始": "{time} {title}, starting {lead} min before",
     "固定時間 {time}": "Fixed time {time}",
     "當天沒有行程，用備用時間 {time}": "Nothing scheduled, using fallback time {time}",
+    "{time} {title} 比較晚，照「沒行程時」的 {fixed} 起床": "{time} {title} is late, so waking at the no-event time {fixed}",
     "當天沒有行程，不排鬧鐘": "Nothing scheduled, no alarms",
     "【{rule}】{why}": "[{rule}] {why}",
     # core：每日簡報

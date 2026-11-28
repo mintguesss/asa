@@ -47,7 +47,8 @@ const EN = {
   // 鬧鐘
   '規則名稱': 'Rule name', '啟用中': 'Enabled', '已停用': 'Disabled', '刪除「{0}」？': 'Delete “{0}”?',
   '跟著行程': 'Follow schedule', '固定時間': 'Fixed time', '提前': 'Lead', '間隔': 'Every', '數量': 'Count', '開始': 'Start', '沒行程時': 'If free',
-  '分': 'min', '個': '', '那天沒有行程時從幾點開始響；留空就不排鬧鐘': 'Start time on days with nothing scheduled; empty = no alarms',
+  '分': 'min', '個': '', '那天沒有行程時從幾點開始響，有行程也不會比這個時間晚；留空就不排鬧鐘': 'Start time on days with nothing scheduled, and the latest start on other days; empty = no alarms',
+  '編輯待辦': 'Edit task', '這週內就好': 'Anytime this week', '連結（可留空）': 'Link (optional)',
   '從第一個到最後一個共 {0} 分鐘': '{0} min from first to last', '套用': 'Apply', '已套用': 'Applied', '新增規則': 'New rule', '新規則': 'New rule',
   '起床紀錄': 'Wake-up log',
   '已過': 'Past', '調整照片': 'Adjust photo', '調整頭貼': 'Adjust avatar', '調整鬧鐘背景': 'Adjust alarm background', '調整背景圖': 'Adjust background',
